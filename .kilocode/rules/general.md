@@ -241,25 +241,66 @@ challengeSolved      // Flag indicating if challenge is completed
   - Updates button text
   - Displays/hides challenge info
 
+#### Mouse Control Utilities
+The mouse control system uses shared utility functions to eliminate code duplication between swipe and drag controls:
+
+- [`getCellsForTile(tile, clickedCell, gridX, gridY)`](puzzle.js): Returns array of cells to check for a tile
+  - Small pieces (1×1): Returns single cell `[{x, y}]`
+  - Big pieces (2×2): Returns all 4 cells of the piece
+  - Used by all control methods for consistent cell enumeration
+
+- [`findAdjacentGaps(cells, gaps)`](puzzle.js): Determines which gaps are adjacent to given cells
+  - Returns `{gap0: {adjacent, dx, dy}, gap1: {adjacent, dx, dy}}`
+  - Checks all cells against both gaps
+  - Stores direction vectors for later use
+  - Eliminates duplicate adjacency checking logic
+
+- [`vectorToDirection(dx, dy, invert)`](puzzle.js): Converts direction vector to tryMove() direction string
+  - Normal mode: `dx=1, dy=0` → `'right'` (for piece drag)
+  - Inverted mode: `dx=1, dy=0` → `'left'` (for gap drag)
+  - Handles the counterintuitive tryMove() direction semantics
+  - Used by all control methods for consistent direction calculation
+
+- [`isInValidDragRegion(mouseX, mouseY, sourceDx, sourceDy)`](puzzle.js): Checks if mouse is in valid 75% drag region
+  - Excludes the 1/4 edge closest to the source
+  - Works for both piece→gap and gap→piece scenarios
+  - Uses quarter-tile calculations for precise region detection
+
+- [`detectSwipeDirection(startPos, currentPos, threshold)`](puzzle.js): Detects swipe direction from mouse movement
+  - Returns direction string or `null` if below threshold
+  - Uses dominant axis to determine direction
+  - Consistent swipe detection across all handlers
+
+- [`isGapInSwipeDirection(cells, gap, swipeDir)`](puzzle.js): Checks if gap is in swipe direction relative to cells
+  - Iterates through cells checking gap position
+  - Returns boolean for quick validation
+  - Simplifies swipe validation logic
+
 #### Event Handling
 - **Keyboard Events**: Attached to [`boardEl`](puzzle.js)
   - Spacebar: Toggles [`selectedGapIdx`](puzzle.js) and calls [`renderGaps()`](puzzle.js) (blocked when challenge solved)
   - Arrow keys/WASD: Calls [`tryMove()`](puzzle.js) with appropriate direction (blocked when challenge solved)
-- **Mouse Events**:
-  - **Mousedown** (on [`boardEl`](puzzle.js)): Records initial position, time, and grid cell for swipe detection
-  - **Mousemove** (on [`boardEl`](puzzle.js)): Detects swipe direction and shows preview
-    - Calculates swipe distance and direction from mousedown position
+
+- **Mouse Events**: Use shared utility functions for consistent behavior
+  - **Mousedown** (on [`boardEl`](puzzle.js)): Records initial position, time, and grid cell
+  - **Mousemove** (on [`boardEl`](puzzle.js)): Handles drag and swipe preview
+    - **Gap Drag Control**: Uses [`getCellsForTile()`](puzzle.js), [`isInValidDragRegion()`](puzzle.js), and [`vectorToDirection()`](puzzle.js) with invert=true
+    - **Piece Drag Control**: Uses [`getCellsForTile()`](puzzle.js), [`isInValidDragRegion()`](puzzle.js), and [`vectorToDirection()`](puzzle.js) with invert=false
+    - **Swipe Preview**: Uses [`detectSwipeDirection()`](puzzle.js), [`getCellsForTile()`](puzzle.js), and [`isGapInSwipeDirection()`](puzzle.js)
     - Applies 5px threshold for swipe detection
-    - Validates swipe direction against adjacent gaps
-    - Applies CSS transform for 15px preview offset in valid direction
+    - Shows 15px visual preview offset during valid swipe
     - Clears preview if swipe becomes invalid or drops below threshold
   - **Mouseup** (on `document`): Completes click or swipe action
+    - Uses [`detectSwipeDirection()`](puzzle.js) for swipe detection
+    - Uses [`getCellsForTile()`](puzzle.js) for cell enumeration
+    - Uses [`findAdjacentGaps()`](puzzle.js) for adjacency checking
+    - Uses [`isGapInSwipeDirection()`](puzzle.js) for swipe validation
+    - Uses [`vectorToDirection()`](puzzle.js) for direction calculation
     - Clears swipe preview transform
-    - Uses original mousedown grid position for piece identification
     - If swipe detected (≥5px), moves piece in swipe direction if gap exists
-    - If no swipe, uses original click behavior (selected gap or only adjacent gap)
-    - For large pieces, checks all 4 cells for gap adjacency
+    - If no swipe, uses click behavior (selected gap or only adjacent gap)
   - Clicking on gap: Updates [`selectedGapIdx`](puzzle.js) if no adjacent gap exists (blocked when challenge solved)
+
 - **Button Events**:
   - Reset button: Calls [`resetState()`](puzzle.js) in Free Play or [`startChallenge()`](puzzle.js) in Challenge Mode
   - Shuffle button: Calls [`shuffle(250)`](puzzle.js) (Free Play only)
@@ -287,13 +328,25 @@ Gaps show darkened version (brightness 0.125) of their default positions, mainta
 
 ## Development Guidelines
 
+### When Modifying Mouse Controls
+1. Use the shared utility functions to maintain consistency:
+   - [`getCellsForTile()`](puzzle.js) for cell enumeration
+   - [`findAdjacentGaps()`](puzzle.js) for adjacency checking
+   - [`vectorToDirection()`](puzzle.js) for direction conversion
+   - [`isInValidDragRegion()`](puzzle.js) for drag region validation
+   - [`detectSwipeDirection()`](puzzle.js) for swipe detection
+   - [`isGapInSwipeDirection()`](puzzle.js) for swipe validation
+2. When adding new control methods, reuse these utilities to avoid code duplication
+3. Test all control methods (click, swipe, drag) after making changes
+4. Remember that [`vectorToDirection()`](puzzle.js) has an `invert` parameter for gap drag control
+
 ### When Modifying Movement Logic
 1. Always update both the tile/gap positions AND rebuild the grid
 2. Call [`buildGridFromState()`](puzzle.js) after position changes
 3. Update DOM with [`renderAll()`](puzzle.js) or specific render functions
 4. Test with both small and large pieces
 5. Ensure gap identity is preserved (gaps remember their home crop)
-6. **IMPORTANT**: Remember that [`tryMove(dir)`](puzzle.js) direction is inverted - it looks in the OPPOSITE direction of where you want to move something. When implementing swipe/drag controls for gap swapping, always reverse the direction.
+6. **IMPORTANT**: Remember that [`tryMove(dir)`](puzzle.js) direction is inverted - it looks in the OPPOSITE direction of where you want to move something. The [`vectorToDirection()`](puzzle.js) utility handles this automatically.
 
 ### When Adding Features
 - Keep the three-file structure (HTML/CSS/JS separation)
