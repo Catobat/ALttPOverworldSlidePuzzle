@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Overworld Slide Puzzle</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="puzzle.css" />
+</head>
+<body>
+  <div class="toolbar">
+    <button id="resetBtn" class="btn">Reset</button>
+    <button id="shuffleBtn" class="btn">Shuffle</button>
+    <button id="challengeBtn" class="btn">New Challenge</button>
+    <button id="giveUpBtn" class="btn" style="display: none;">Give Up</button>
+  </div>
+  <div class="game-container">
+    <div id="board" tabindex="0" aria-label="Slide puzzle board"></div>
+    <div class="challenge-info" id="challengeInfo" style="display: none;">
+      <div class="challenge-info-title">Challenge</div>
+      <div class="challenge-info-row">Seed: <span id="challengeSeedDisplay"></span></div>
+      <div class="challenge-info-row">Shuffling steps: <span id="challengeStepsDisplay"></span></div>
+      <div class="challenge-info-row">Move count: <span id="challengeMovesDisplay">0</span></div>
+    </div>
+  </div>
+  <div class="hint">
+    <strong>Keyboard:</strong> <span class="kbd">Space</span> switch selected gap • <span class="kbd">←</span><span class="kbd">→</span><span class="kbd">↑</span><span class="kbd">↓</span> slide a piece into the selected gap<br>
+    <strong>Mouse Click:</strong> Click a piece to move it into an adjacent gap • Click a gap to select it<br>
+    <strong>Mouse Swipe:</strong> Swipe a piece to move it in that direction<br>
+    Large 2×2 pieces move only if both gaps line up on their path. Adjacent gaps can be swapped.
+  </div>
+
+  <!-- Challenge Dialog -->
+  <div id="challengeDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog">
+      <h2>New Challenge</h2>
+      <div class="dialog-content">
+        <div class="form-group">
+          <label for="seedInput">Seed (leave empty for random):</label>
+          <input type="number" id="seedInput" placeholder="Enter a number" min="0" />
+        </div>
+        <div class="form-group">
+          <label for="stepsInput">Number of shuffling steps (difficulty):</label>
+          <input type="number" id="stepsInput" value="250" min="1" max="10000" />
+          <div class="difficulty-presets">
+            <button type="button" class="preset-btn" data-steps="50">Easy (50)</button>
+            <button type="button" class="preset-btn" data-steps="250">Normal (250)</button>
+            <button type="button" class="preset-btn" data-steps="1000">Hard (1000)</button>
+            <button type="button" class="preset-btn" data-steps="10000">Very Hard (10000)</button>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-buttons">
+        <button id="challengeStartBtn" class="btn btn-primary">Start Challenge</button>
+        <button id="challengeCancelBtn" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Congratulations Dialog -->
+  <div id="congratsDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog">
+      <h2>Congratulations!</h2>
+      <div class="dialog-content">
+        <p id="congratsMessage" style="text-align: center; font-size: 1.1rem; margin: 20px 0;"></p>
+      </div>
+      <div class="dialog-buttons">
+        <button id="congratsOkBtn" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="puzzle.js"></script>
+</body>
+</html>

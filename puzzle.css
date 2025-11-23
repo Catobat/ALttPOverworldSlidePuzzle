@@ -1,0 +1,228 @@
+:root { --tile: 64px; }
+body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
+.toolbar { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap: wrap; }
+.btn { padding:8px 12px; border:1px solid #888; border-radius: 0; background:#f5f5f5; cursor:pointer; }
+.btn:active { transform: translateY(1px); }
+.status { margin-left: 8px; font-size: 0.9rem; color: #555; }
+
+.game-container {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.challenge-info {
+  min-width: 180px;
+  font-size: 0.95rem;
+  color: #222;
+  padding: 16px;
+  background: rgba(100, 200, 255, 0.15);
+  border: 1px solid rgba(100, 200, 255, 0.3);
+}
+
+.challenge-info-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #000;
+}
+
+.challenge-info-row {
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.challenge-info-row span {
+  font-weight: 400;
+  color: #555;
+}
+
+#board {
+  position: relative;
+  width: calc(8 * var(--tile));
+  height: calc(8 * var(--tile));
+  background: #222;
+  border: 1px solid #000;
+  user-select: none;
+  outline: none;
+  transition: box-shadow 200ms ease;
+}
+
+#board:focus {
+  box-shadow:
+    0 0 0 2px rgb(100, 200, 255),
+    0 0 8px 2px rgba(100, 200, 255, 0.5),
+    0 0 16px 2px rgba(100, 200, 255, 0.25);
+}
+
+.tile {
+  position: absolute;
+  background-image: url("lightworld.png");
+  background-size: calc(8 * var(--tile)) calc(8 * var(--tile));
+  background-repeat: no-repeat;
+  box-sizing: border-box;
+  /* thin black outlines on piece edges */
+  box-shadow: inset 0 0 0 1px #000;
+  will-change: left, top, transform;
+  transition: left 80ms ease, top 80ms ease, transform 150ms ease;
+  border-radius: 0;
+}
+
+/* Disable transitions when shuffling in Challenge Mode */
+#board.no-transitions .tile,
+#board.no-transitions .gap-wrapper {
+  transition: none !important;
+}
+.tile.small {
+  width: var(--tile);
+  height: var(--tile);
+}
+.tile.big {
+  width: calc(2 * var(--tile));
+  height: calc(2 * var(--tile));
+}
+
+.gap-wrapper {
+  position: absolute;
+  width: var(--tile);
+  height: var(--tile);
+  pointer-events: none;
+}
+.gap-wrapper.selected::before {
+  /* bright selection ring - rendered outside the filtered content */
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-shadow: inset 0 0 0 2px rgb(100, 200, 255);
+  pointer-events: none;
+  z-index: 2;
+}
+.gap {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-image: url("lightworld.png");
+  background-size: calc(8 * var(--tile)) calc(8 * var(--tile));
+  background-repeat: no-repeat;
+  /* darkened so gaps are distinct, but still show the image crop from their default positions */
+  filter: brightness(0.25);
+  box-sizing: border-box;
+  border-radius: 0;
+  /* thin black outline to match tiles */
+  box-shadow: inset 0 0 0 1px #000;
+  pointer-events: none;
+}
+
+.hint {
+  margin-top: 10px; color:#555; font-size: 0.95rem;
+}
+.kbd { padding: 1px 6px; border:1px solid #aaa; border-bottom-width:2px; border-radius:0; background:#fafafa; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* Dialog styles */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: white;
+  padding: 24px;
+  border: 1px solid #888;
+  min-width: 480px;
+  max-width: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dialog h2 {
+  margin: 0 0 20px 0;
+  font-size: 1.3rem;
+  color: #222;
+}
+
+.dialog-content {
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #888;
+  border-radius: 0;
+  font-size: 1rem;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: rgb(100, 200, 255);
+  box-shadow: 0 0 0 2px rgba(100, 200, 255, 0.2);
+}
+
+.difficulty-presets {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.preset-btn {
+  flex: 1;
+  padding: 2px;
+  border: 1px solid #888;
+  border-radius: 0;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-family: inherit;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.preset-btn:hover {
+  background: #e8e8e8;
+  border-color: #666;
+}
+
+.preset-btn:active {
+  transform: translateY(1px);
+  background: #ddd;
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-primary {
+  background: rgb(100, 200, 255);
+  border-color: rgb(80, 180, 235);
+  color: #000;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background: rgb(80, 180, 235);
+}
