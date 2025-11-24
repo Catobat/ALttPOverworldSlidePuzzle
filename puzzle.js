@@ -755,6 +755,7 @@
   let mouseDownPos = null;
   let mouseDownTime = null;
   let mouseDownGridPos = null;
+  let mouseDownSelectedGapIdx = null; // Track which gap was selected when mousedown occurred
   let swipePreviewActive = false;
   let swipePreviewTile = null;
   let swipePreviewOffset = { x: 0, y: 0 };
@@ -785,6 +786,7 @@
     mouseDownPos = { x: e.clientX, y: e.clientY };
     mouseDownTime = Date.now();
     mouseDownGridPos = { x: gridX, y: gridY };
+    mouseDownSelectedGapIdx = selectedGapIdx; // Store which gap was selected before this mousedown
     lastDragGapPos = null; // Reset drag tracking for new drag session
     dragControlUsed = false; // Reset drag control flag for new drag session
     
@@ -1102,6 +1104,7 @@
       mouseDownPos = null;
       mouseDownTime = null;
       mouseDownGridPos = null;
+      mouseDownSelectedGapIdx = null;
       lastDragGapPos = null;
       dragControlUsed = false;
       return;
@@ -1126,6 +1129,7 @@
       mouseDownPos = null;
       mouseDownTime = null;
       mouseDownGridPos = null;
+      mouseDownSelectedGapIdx = null;
       lastDragGapPos = null;
       dragControlUsed = false;
       return;
@@ -1139,20 +1143,27 @@
     const gridX = mouseDownGridPos.x;
     const gridY = mouseDownGridPos.y;
 
+    // Check if clicked on a gap
+    const clickedGapIdx = gaps.findIndex(g => g.x === gridX && g.y === gridY);
+    
+    // Store whether this gap was already selected BEFORE mousedown changed it
+    const wasAlreadySelected = (mouseDownSelectedGapIdx === clickedGapIdx);
+    
     // Reset mouse tracking
     mouseDownPos = null;
     mouseDownTime = null;
     mouseDownGridPos = null;
+    mouseDownSelectedGapIdx = null;
     lastDragGapPos = null;
     dragControlUsed = false;
 
-    // Check if clicked on a gap
-    const clickedGapIdx = gaps.findIndex(g => g.x === gridX && g.y === gridY);
     if (clickedGapIdx !== -1) {
       // Clicked on a gap
-      selectedGapIdx = clickedGapIdx;
       
       if (swipeDir) {
+        // Swipe detected - handle swipe behavior
+        selectedGapIdx = clickedGapIdx;
+        
         // Check if the other gap is adjacent in the swipe direction
         const otherGapIdx = 1 - clickedGapIdx;
         const otherGap = gaps[otherGapIdx];
@@ -1185,18 +1196,31 @@
         }
       }
       
-      // Check if the other gap is adjacent (for click behavior)
-      const otherGapIdx = 1 - clickedGapIdx;
-      const otherGap = gaps[otherGapIdx];
-      const dx = Math.abs(otherGap.x - gridX);
-      const dy = Math.abs(otherGap.y - gridY);
-      
-      if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
-        // Adjacent gap exists - just select this gap, don't fall through
-        renderGaps();
+      // No swipe detected - handle click behavior
+      if (wasAlreadySelected) {
+        // Gap was already selected - check if the other gap is adjacent and swap if so
+        const otherGapIdx = 1 - clickedGapIdx;
+        const otherGap = gaps[otherGapIdx];
+        const dx = otherGap.x - gridX;
+        const dy = otherGap.y - gridY;
+        
+        if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
+          // Adjacent gap exists - swap them
+          // Determine swap direction (tryMove direction is OPPOSITE of where the gap is)
+          let gapSwapDir = null;
+          if (dx === 1 && dy === 0) gapSwapDir = 'left';   // other gap is right, so move from left
+          if (dx === -1 && dy === 0) gapSwapDir = 'right';  // other gap is left, so move from right
+          if (dx === 0 && dy === 1) gapSwapDir = 'up';      // other gap is down, so move from up
+          if (dx === 0 && dy === -1) gapSwapDir = 'down';   // other gap is up, so move from down
+          
+          if (gapSwapDir) {
+            tryMove(gapSwapDir);
+          }
+        }
         return;
       } else {
-        // No adjacent gap, just select this gap (already done above)
+        // Gap was not selected - just select it
+        selectedGapIdx = clickedGapIdx;
         renderGaps();
         return;
       }

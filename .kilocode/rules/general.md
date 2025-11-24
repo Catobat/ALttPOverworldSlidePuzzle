@@ -56,7 +56,11 @@ These are defined in the [`bigHomes`](puzzle.js) and [`defaultGaps`](puzzle.js) 
 - **Drag on Gap**: Click and hold on a gap, then drag over the other gap to swap
   - Swaps when mouse enters the other gap's area
   - Allows continuous swapping during a single drag operation
-- **Left Click on Gap**: Select that gap (if no adjacent gap exists)
+- **Left Click on Gap**:
+  - First click on an unselected gap: Selects the gap (updates selection highlighting)
+  - Click on an already-selected gap: Checks if the other gap is adjacent
+    - If adjacent, swaps the two gaps
+    - If not adjacent, gap remains selected
 
 #### Button Controls
 - **Reset Button**: Return to solved state (Free Play) or recreate challenge (Challenge Mode)
@@ -299,7 +303,12 @@ The mouse control system uses shared utility functions to eliminate code duplica
     - Clears swipe preview transform
     - If swipe detected (≥5px), moves piece in swipe direction if gap exists
     - If no swipe, uses click behavior (selected gap or only adjacent gap)
-  - Clicking on gap: Updates [`selectedGapIdx`](puzzle.js) if no adjacent gap exists (blocked when challenge solved)
+  - **Clicking on gap**:
+    - First click on unselected gap: Selects the gap (updates [`selectedGapIdx`](puzzle.js))
+    - Click on already-selected gap: Checks if the other gap is adjacent
+      - If adjacent, swaps the two gaps using [`tryMove()`](puzzle.js)
+      - If not adjacent, gap remains selected
+    - All gap interactions blocked when challenge is solved
 
 - **Button Events**:
   - Reset button: Calls [`resetState()`](puzzle.js) in Free Play or [`startChallenge()`](puzzle.js) in Challenge Mode
