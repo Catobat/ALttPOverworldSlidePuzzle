@@ -243,7 +243,7 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Calls [`enumerateValidMoves()`](puzzle.js) to get legal moves
   - **Anti-reversal logic**: Remembers last move and filters out immediate reversals unless no other options exist
   - **Weighted selection** creates varied, interesting shuffles:
-    - **Big piece moves**: 3x weight (highest priority) - encourages moving large pieces
+    - **Big piece moves**: 10x weight (highest priority) - encourages moving large pieces
     - **Small piece moves**: 1x weight (normal priority)
     - **Gap swaps**: Very low priority (~10% chance when other moves available) - only used frequently when no alternatives
   - Randomly selects from weighted move pool
@@ -477,6 +477,7 @@ The game includes a [`SeededRandom`](puzzle.js) class for deterministic puzzle g
 - Uses Linear Congruential Generator (LCG) algorithm with parameters from Numerical Recipes
 - Ensures identical puzzles across all browsers and operating systems
 - Used by [`shuffle()`](puzzle.js) when seed is provided
+- **Combines seed and steps**: The shuffle function creates a combined seed using `((seed ^ (steps << 16)) >>> 0)` to ensure that changing either the seed OR the step count produces a completely different shuffle. This XOR-based approach with bit shifting avoids overflow issues and provides good bit mixing while staying within the valid 32-bit unsigned integer range.
 - Random seed generation uses full 32-bit range: `Math.floor(Math.random() * 4294967296)`
 
 ### Move Counting System
@@ -653,7 +654,7 @@ In [`tryMove()`](puzzle.js) for big pieces:
    - Prevents pointless back-and-forth oscillations
 
 2. **Weighted Priorities**: Creates weighted array for random selection
-   - **Big piece moves** (2×2 tiles): Added 3 times → 3x probability
+   - **Big piece moves** (2×2 tiles): Added 10 times → 10x probability
      - Encourages more frequent large piece movements
      - Makes shuffles more visually interesting and challenging
    - **Small piece moves** (1×1 tiles): Added 1 time → normal probability

@@ -587,7 +587,7 @@
     return moves;
   }
 
-  async function shuffle(steps = 400, seed = null) {
+  async function shuffle(steps, seed = null) {
     shuffleBtn.disabled = true; resetBtn.disabled = true; challengeBtn.disabled = true;
     isShuffling = true; // Set flag to prevent move counting
     
@@ -598,7 +598,11 @@
     }
     
     // Create random number generator (seeded or random)
-    const rng = seed !== null ? new SeededRandom(seed) : null;
+    // Combine seed and steps to create a unique seed for this shuffle
+    // This ensures that changing either parameter produces a different shuffle
+    // Using XOR with bit shifting to avoid overflow and ensure good bit mixing
+    const combinedSeed = seed !== null ? ((seed ^ (steps << 16)) >>> 0) : null;
+    const rng = combinedSeed !== null ? new SeededRandom(combinedSeed) : null;
     const random = () => rng ? rng.next() : Math.random();
     const randomInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max);
     
@@ -628,7 +632,7 @@
         }
         
         // Create weighted array with priorities:
-        // - Big piece moves: 3x weight (high priority)
+        // - Big piece moves: 10x weight (high priority)
         // - Small piece moves: 1x weight (normal priority)
         // - Gap swaps: only if no other moves available, otherwise very low priority
         const weightedMoves = [];
@@ -636,8 +640,8 @@
         
         for (const move of filteredMoves) {
           if (move.isBig) {
-            // Add big piece moves 3 times for higher probability
-            weightedMoves.push(move, move, move);
+            // Add big piece moves 10 times for higher probability
+            weightedMoves.push(move, move, move, move, move, move, move, move, move, move);
           } else if (move.isGapSwap) {
             // Only add gap swaps if there are no other moves, or add with very low weight
             if (!hasNonGapSwapMoves) {
@@ -675,6 +679,10 @@
       if (isChallenge) {
         boardEl.classList.remove('no-transitions');
       }
+      
+      // Randomly select one of the gaps to hide which was used last
+      selectedGapIdx = randomInt(2);
+      renderGaps();
       
       isShuffling = false; // Clear flag after shuffle completes
       shuffleBtn.disabled = false; resetBtn.disabled = false; challengeBtn.disabled = false;
