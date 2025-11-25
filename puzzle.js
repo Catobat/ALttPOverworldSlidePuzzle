@@ -9,6 +9,7 @@
   const challengeDialog = document.getElementById('challengeDialog');
   const challengeStartBtn = document.getElementById('challengeStartBtn');
   const challengeCancelBtn = document.getElementById('challengeCancelBtn');
+  const dailyChallengeBtn = document.getElementById('dailyChallengeBtn');
   const seedInput = document.getElementById('seedInput');
   const stepsInput = document.getElementById('stepsInput');
   const challengeInfo = document.getElementById('challengeInfo');
@@ -18,6 +19,12 @@
   const congratsDialog = document.getElementById('congratsDialog');
   const congratsMessage = document.getElementById('congratsMessage');
   const congratsOkBtn = document.getElementById('congratsOkBtn');
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const helpDialog = document.getElementById('helpDialog');
+  const helpCloseBtn = document.getElementById('helpCloseBtn');
+  const challengeTimerDisplay = document.getElementById('challengeTimerDisplay');
+  const timerToggleBtn = document.getElementById('timerToggleBtn');
 
   // Seeded Random Number Generator (LCG algorithm)
   // This ensures deterministic results across all browsers and operating systems
@@ -65,6 +72,12 @@
   let challengeMoveCount = 0;
   let isShuffling = false; // Flag to prevent move counting during shuffle
   let challengeSolved = false; // Flag to track if challenge is solved
+  
+  // Timer state
+  let timerStartTime = null;
+  let timerElapsedTime = 0;
+  let timerInterval = null;
+  let timerPaused = false;
 
   // Gap marker DOM (wrapper + inner gap element for each identity)
   const gapWrappers = [document.createElement('div'), document.createElement('div')];
@@ -188,6 +201,86 @@
     }
   }
 
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  function updateTimer() {
+    if (!timerPaused && timerStartTime !== null) {
+      const currentTime = Date.now();
+      const elapsed = Math.floor((currentTime - timerStartTime + timerElapsedTime) / 1000);
+      challengeTimerDisplay.textContent = formatTime(elapsed);
+    }
+  }
+
+  function startTimer() {
+    if (gameMode !== 'challenge') return;
+    
+    timerStartTime = Date.now();
+    timerElapsedTime = 0;
+    timerPaused = false;
+    challengeTimerDisplay.textContent = '0:00';
+    timerToggleBtn.textContent = '⏸';
+    timerToggleBtn.setAttribute('aria-label', 'Pause timer');
+    timerToggleBtn.setAttribute('title', 'Pause');
+    
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(updateTimer, 100);
+  }
+
+  function pauseTimer() {
+    if (timerPaused || !timerStartTime) return;
+    
+    timerPaused = true;
+    const currentTime = Date.now();
+    timerElapsedTime += (currentTime - timerStartTime);
+    timerToggleBtn.textContent = '▶';
+    timerToggleBtn.setAttribute('aria-label', 'Resume timer');
+    timerToggleBtn.setAttribute('title', 'Resume');
+    boardEl.classList.add('paused');
+  }
+
+  function resumeTimer() {
+    if (!timerPaused) return;
+    
+    timerPaused = false;
+    timerStartTime = Date.now();
+    timerToggleBtn.textContent = '⏸';
+    timerToggleBtn.setAttribute('aria-label', 'Pause timer');
+    timerToggleBtn.setAttribute('title', 'Pause');
+    boardEl.classList.remove('paused');
+    boardEl.focus();
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    timerStartTime = null;
+    timerElapsedTime = 0;
+    timerPaused = false;
+    boardEl.classList.remove('paused');
+    challengeTimerDisplay.textContent = '0:00';
+    timerToggleBtn.textContent = '⏸';
+    timerToggleBtn.setAttribute('aria-label', 'Pause timer');
+    timerToggleBtn.setAttribute('title', 'Pause');
+  }
+
+  function freezeTimer() {
+    // Stop timer updates without applying blur (used when puzzle is solved)
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    timerStartTime = null;
+    // Keep timerPaused as false to prevent blur
+    timerPaused = false;
+    boardEl.classList.remove('paused');
+  }
+
   function updateURL() {
     // Update browser URL to reflect current game mode
     const url = new URL(window.location);
@@ -212,6 +305,7 @@
     challengeSteps = null;
     challengeMoveCount = 0;
     challengeSolved = false;
+    stopTimer();
     updateUIForMode();
     updateURL(); // Update URL when switching to Free Play
     renderGaps(); // Restore gap highlighting for Free Play mode
@@ -224,6 +318,10 @@
     challengeSteps = steps;
     challengeMoveCount = 0;
     challengeSolved = false;
+    
+    // Stop any existing timer and remove paused state
+    stopTimer();
+    
     updateUIForMode();
     updateURL(); // Update URL when starting challenge
     
@@ -232,6 +330,9 @@
     
     // Then shuffle with the challenge seed
     await shuffle(steps, seed);
+    
+    // Start timer after shuffle completes
+    startTimer();
   }
 
   function checkWinCondition() {
@@ -251,14 +352,18 @@
 
   async function handleWin() {
     challengeSolved = true;
+    freezeTimer(); // Stop timer without blur effect
     updateUIForMode();
     renderGaps(); // Remove gap selection highlighting immediately
     
     // Wait for animation to complete (80ms transition time)
     await new Promise(resolve => setTimeout(resolve, 100));
     
+    // Get final time
+    const finalTime = challengeTimerDisplay.textContent;
+    
     // Show custom congratulations dialog
-    congratsMessage.textContent = `You solved the challenge in ${challengeMoveCount} moves!`;
+    congratsMessage.textContent = `You solved the challenge in ${challengeMoveCount} moves and with a time of ${finalTime}!`;
     congratsDialog.style.display = 'flex';
   }
 
@@ -290,8 +395,8 @@
   }
 
   function tryMove(dir) {
-    // Prevent moves if challenge is solved
-    if (gameMode === 'challenge' && challengeSolved) {
+    // Prevent moves if challenge is solved or timer is paused
+    if (gameMode === 'challenge' && (challengeSolved || timerPaused)) {
       return false;
     }
     
@@ -580,8 +685,8 @@
   boardEl.addEventListener('keydown', (e) => {
     if (e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
-      // Prevent gap switching if challenge is solved
-      if (gameMode === 'challenge' && challengeSolved) {
+      // Prevent gap switching if challenge is solved or timer is paused
+      if (gameMode === 'challenge' && (challengeSolved || timerPaused)) {
         return;
       }
       selectedGapIdx = 1 - selectedGapIdx;
@@ -1311,6 +1416,18 @@
     boardEl.focus();
   });
 
+  // Timer toggle button handler
+  timerToggleBtn.addEventListener('click', () => {
+    // Disable button when challenge is solved
+    if (challengeSolved) return;
+    
+    if (timerPaused) {
+      resumeTimer();
+    } else {
+      pauseTimer();
+    }
+  });
+
   // Challenge dialog handlers
   challengeBtn.addEventListener('click', () => {
     challengeDialog.style.display = 'flex';
@@ -1329,6 +1446,16 @@
   challengeCancelBtn.addEventListener('click', () => {
     challengeDialog.style.display = 'none';
     boardEl.focus();
+  });
+
+  // Daily Challenge button handler
+  dailyChallengeBtn.addEventListener('click', () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const dailySeed = `${year}${month}${day}`;
+    seedInput.value = dailySeed;
   });
 
   challengeStartBtn.addEventListener('click', async () => {
@@ -1378,6 +1505,56 @@
     if (e.key === 'Enter' || e.key === 'Escape') {
       e.preventDefault();
       congratsOkBtn.click();
+    }
+  });
+
+  // Theme toggle handler
+  themeToggleBtn.addEventListener('click', () => {
+    document.body.classList.toggle('dark-mode');
+    const isDarkMode = document.body.classList.contains('dark-mode');
+    localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
+  });
+
+  // Load saved theme preference
+  if (localStorage.getItem('darkMode') === 'enabled') {
+    document.body.classList.add('dark-mode');
+  }
+
+  // Help dialog handlers
+  helpBtn.addEventListener('click', () => {
+    helpDialog.style.display = 'flex';
+    helpCloseBtn.focus();
+  });
+
+  helpCloseBtn.addEventListener('click', () => {
+    helpDialog.style.display = 'none';
+    boardEl.focus();
+  });
+
+  // Allow Enter/Escape to close help dialog
+  helpDialog.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      helpCloseBtn.click();
+    }
+  });
+
+  // Close dialogs when clicking outside (on overlay)
+  challengeDialog.addEventListener('mousedown', (e) => {
+    if (e.target === challengeDialog) {
+      challengeCancelBtn.click();
+    }
+  });
+
+  congratsDialog.addEventListener('mousedown', (e) => {
+    if (e.target === congratsDialog) {
+      congratsOkBtn.click();
+    }
+  });
+
+  helpDialog.addEventListener('mousedown', (e) => {
+    if (e.target === helpDialog) {
+      helpCloseBtn.click();
     }
   });
 

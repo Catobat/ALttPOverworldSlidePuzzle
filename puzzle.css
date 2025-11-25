@@ -1,7 +1,35 @@
 :root { --tile: 64px; }
 body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
-.toolbar { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap: wrap; }
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  max-width: calc(8 * var(--tile));
+}
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 .btn { padding:8px 12px; border:1px solid #888; border-radius: 0; background:#f5f5f5; cursor:pointer; }
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.2rem;
+}
 .btn:active { transform: translateY(1px); }
 .status { margin-left: 8px; font-size: 0.9rem; color: #555; }
 
@@ -12,7 +40,7 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
 }
 
 .challenge-info {
-  min-width: 180px;
+  min-width: 220px;
   font-size: 0.95rem;
   color: #222;
   padding: 16px;
@@ -37,6 +65,85 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   color: #555;
 }
 
+.challenge-stats-container {
+  display: flex;
+  gap: 0;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(100, 200, 255, 0.2);
+}
+
+.challenge-stat-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.challenge-stat-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #666;
+}
+
+.challenge-stat-value {
+  font-size: 1.425rem;
+  font-weight: 600;
+  color: #000;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.challenge-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.challenge-timer-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(100, 200, 255, 0.2);
+}
+
+.challenge-timer {
+  font-size: 1.425rem;
+  font-weight: 600;
+  color: #000;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.btn-timer-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #888;
+  border-radius: 0;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.btn-timer-toggle:hover {
+  background: #e8e8e8;
+  border-color: #666;
+}
+
+.btn-timer-toggle:active {
+  transform: translateY(1px);
+}
+
 #board {
   position: relative;
   width: calc(8 * var(--tile));
@@ -45,7 +152,12 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   border: 1px solid #000;
   user-select: none;
   outline: none;
-  transition: box-shadow 200ms ease;
+  transition: box-shadow 200ms ease, filter 300ms ease;
+  isolation: isolate;
+}
+
+#board.paused {
+  filter: blur(8px);
 }
 
 #board:focus {
@@ -108,12 +220,42 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   background-size: calc(8 * var(--tile)) calc(8 * var(--tile));
   background-repeat: no-repeat;
   /* darkened so gaps are distinct, but still show the image crop from their default positions */
-  filter: brightness(0.25);
+  filter: brightness(0.5);
   box-sizing: border-box;
   border-radius: 0;
   /* thin black outline to match tiles */
   box-shadow: inset 0 0 0 1px #000;
   pointer-events: none;
+}
+
+.help-section {
+  margin-bottom: 16px;
+}
+
+.help-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #000;
+}
+
+.help-section p {
+  margin: 4px 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.help-note {
+  margin-top: 20px;
+  padding: 12px;
+  background: rgba(100, 200, 255, 0.1);
+  border-left: 3px solid rgb(100, 200, 255);
+}
+
+.help-note p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .hint {
@@ -176,6 +318,23 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   font-family: inherit;
 }
 
+.seed-input-group {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.seed-input-group input {
+  flex: 1;
+  min-width: 0;
+}
+
+.seed-input-group .btn-primary {
+  white-space: nowrap;
+  padding: 8px 12px;
+  align-self: stretch;
+}
+
 .form-group input:focus {
   outline: none;
   border-color: rgb(100, 200, 255);
@@ -225,4 +384,108 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
 
 .btn-primary:hover {
   background: rgb(80, 180, 235);
+}
+
+/* Dark Mode */
+body.dark-mode {
+  background: #1a1a1a;
+  color: #e0e0e0;
+}
+
+body.dark-mode .btn {
+  background: #2a2a2a;
+  border-color: #555;
+  color: #e0e0e0;
+}
+
+body.dark-mode .btn:hover {
+  background: #333;
+  border-color: #666;
+}
+
+body.dark-mode .challenge-info {
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.25);
+  color: #e0e0e0;
+}
+
+body.dark-mode .challenge-info-title {
+  color: #e0e0e0;
+}
+
+body.dark-mode .challenge-info-row span {
+  color: #aaa;
+}
+
+body.dark-mode .challenge-stat-label {
+  color: #aaa;
+}
+
+body.dark-mode .challenge-stat-value {
+  color: #e0e0e0;
+}
+
+body.dark-mode .dialog {
+  background: #2a2a2a;
+  border-color: #555;
+  color: #e0e0e0;
+}
+
+body.dark-mode .dialog h2 {
+  color: #e0e0e0;
+}
+
+body.dark-mode .dialog h3 {
+  color: #e0e0e0;
+}
+
+body.dark-mode .form-group label {
+  color: #e0e0e0;
+}
+
+body.dark-mode .form-group input {
+  background: #1a1a1a;
+  border-color: #555;
+  color: #e0e0e0;
+}
+
+body.dark-mode .form-group input:focus {
+  border-color: rgb(100, 200, 255);
+  box-shadow: 0 0 0 2px rgba(100, 200, 255, 0.3);
+}
+
+body.dark-mode .preset-btn {
+  background: #1a1a1a;
+  border-color: #555;
+  color: #e0e0e0;
+}
+
+body.dark-mode .preset-btn:hover {
+  background: #333;
+  border-color: #666;
+}
+
+body.dark-mode .preset-btn:active {
+  background: #444;
+}
+
+body.dark-mode .btn-primary {
+  background: rgb(80, 160, 215);
+  border-color: rgb(60, 140, 195);
+  color: #fff;
+}
+
+body.dark-mode .btn-primary:hover {
+  background: rgb(60, 140, 195);
+}
+
+body.dark-mode .help-note {
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.25);
+}
+
+body.dark-mode .kbd {
+  background: #1a1a1a;
+  border-color: #555;
+  color: #e0e0e0;
 }

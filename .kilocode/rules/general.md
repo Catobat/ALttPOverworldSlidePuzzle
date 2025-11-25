@@ -67,6 +67,7 @@ These are defined in the [`bigHomes`](puzzle.js) and [`defaultGaps`](puzzle.js) 
 - **Shuffle Button**: Randomize board with 250 valid moves (Free Play only)
 - **New Challenge Button**: Start a new challenge with custom or random seed
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
+- **Help Button** (?): Opens controls reference dialog
 
 ### Movement Rules
 1. **Small Pieces (1×1)**: Can move into any adjacent gap
@@ -86,6 +87,22 @@ lightworld.png       # Puzzle image (8×8 tile grid)
 .clinerules          # This AI instructions file
 ```
 
+### UI Layout
+
+#### Toolbar Structure
+The toolbar uses flexbox layout with two groups:
+- **`.toolbar`**: Main container with `justify-content: space-between` and `max-width` set to puzzle width (8 tiles)
+- **`.toolbar-left`**: Left-aligned button group containing:
+  - Reset button
+  - Shuffle button (hidden in Challenge Mode)
+  - New Challenge button
+  - Give Up button (shown only in Challenge Mode)
+- **`.toolbar-right`**: Right-aligned button group containing:
+  - Help button (?) - Opens controls reference dialog
+  - Theme toggle button (💡) - Toggles dark mode theme
+  
+This structure ensures the right buttons stay aligned with the puzzle width rather than extending to the window edge.
+
 ### Game Modes
 
 The game has two distinct modes:
@@ -100,7 +117,7 @@ The game has two distinct modes:
 - **UI Elements**: Reset, Shuffle, New Challenge buttons visible
 
 #### Challenge Mode
-- **Purpose**: Solve a specific puzzle configuration with move tracking
+- **Purpose**: Solve a specific puzzle configuration with move tracking and timing
 - **Activation**:
   - Click "New Challenge" button and provide:
     - **Seed**: Numeric value (leave empty for random, range: 0 to 2^32-1)
@@ -109,20 +126,40 @@ The game has two distinct modes:
 - **Features**:
   - Deterministic puzzle generation using seeded RNG
   - Move counter tracks player moves (starts at 0)
+  - Timer tracks elapsed time (starts after shuffle completes)
+  - Pause/Resume button (⏸/▶) to pause timer and prevent moves
   - Shuffle button hidden (puzzle is fixed)
   - Reset button recreates the same challenge
-  - Challenge info box displays seed, steps, and move count
+  - Challenge info box displays seed, steps, move count, and timer
   - Give Up button switches back to Free Play mode
   - **No shuffle animations**: Shuffle executes instantly without visible transitions
   - **URL synchronization**: Browser URL automatically updates to reflect current mode
+- **Challenge Info Layout**:
+  - Displays seed and shuffling steps as compact text rows
+  - Move Count and Timer displayed side-by-side below
+  - Each stat has a small label (0.875rem) above large value (1.425rem)
+  - Timer includes pause/resume button (⏸/▶) next to time display
+  - Challenge box has min-width of 220px to accommodate "M:SS" time without layout shifts
+- **Timer Behavior**:
+  - Automatically starts when shuffle completes
+  - Can be paused/resumed using the pause button (⏸/▶)
+  - Pause button has fixed 28x28px size for consistent appearance
+  - When paused, all moves and gap switching are disabled
+  - When paused, puzzle board applies blur effect (`filter: blur(8px)`)
+  - Blur is isolated to board only using `isolation: isolate` to prevent bleeding onto neighbors
+  - When resumed, focus returns to the board automatically for immediate keyboard control
+  - Stops automatically when puzzle is solved (without blur effect)
+  - Timer button is disabled when puzzle is solved (no pause/resume after completion)
+  - Displays in M:SS format (e.g., 2:34 for times under 1 hour, 62:15 for 1 hour 2 minutes)
 - **Win Condition**:
-  - When puzzle is solved, congratulations dialog appears
+  - When puzzle is solved, congratulations dialog appears, showing moves and time
   - All moves and gap switching are locked
+  - Timer is frozen
   - Gap selection highlighting is removed
   - "Give Up" button changes to "Free Play"
   - Player can reset challenge or return to Free Play
 - **UI Elements**: Reset Challenge, Give Up, New Challenge buttons visible
-- **Info Display**: Shows "Challenge", seed number, shuffle steps, and current move count
+- **Info Display**: Shows "Challenge", seed number, shuffle steps, move count, and timer with pause button
 
 ### Key Data Structures
 
@@ -140,6 +177,10 @@ challengeSteps       // Number of shuffle steps for challenge (null in Free Play
 challengeMoveCount   // Player's move count in Challenge Mode
 isShuffling          // Flag to prevent move counting during shuffle
 challengeSolved      // Flag indicating if challenge is completed
+timerStartTime       // Timestamp when timer started (null when stopped)
+timerElapsedTime     // Accumulated elapsed time in milliseconds
+timerInterval        // Interval ID for timer updates (100ms)
+timerPaused          // Boolean flag indicating if timer is paused
 ```
 
 #### Grid Cell Format
@@ -217,10 +258,13 @@ challengeSolved      // Flag indicating if challenge is completed
   - Sets game mode to 'challenge'
   - Stores seed and steps for reset functionality
   - Resets move counter to 0
+  - Calls [`stopTimer()`](puzzle.js) to clear any previous timer state
   - Updates URL with seed and steps parameters
   - Resets to solved state then shuffles with seed (no animations)
+  - Starts timer after shuffle completes
 - [`switchToFreePlay()`](puzzle.js): Returns to Free Play mode
   - Clears challenge data
+  - Stops and resets timer
   - Removes URL parameters
   - Restores gap highlighting
   - Keeps current board state
@@ -237,13 +281,50 @@ challengeSolved      // Flag indicating if challenge is completed
   - Checks gaps are in default positions
 - [`handleWin()`](puzzle.js): Handles challenge completion
   - Sets `challengeSolved` flag
+  - Calls [`freezeTimer()`](puzzle.js) to stop timer without blur
   - Removes gap highlighting
   - Waits for animation to complete
-  - Shows congratulations dialog with move count
+  - Shows congratulations dialog with move count and time
 - [`updateUIForMode()`](puzzle.js): Updates UI based on current mode
   - Shows/hides appropriate buttons
   - Updates button text
   - Displays/hides challenge info
+
+#### Timer Functions
+- [`startTimer()`](puzzle.js): Starts the challenge timer
+  - Resets elapsed time to 0
+  - Sets start timestamp
+  - Creates 100ms interval to update display
+  - Sets pause button to ⏸ icon
+- [`pauseTimer()`](puzzle.js): Pauses the timer and blurs board
+  - Stops timer interval
+  - Accumulates elapsed time
+  - Sets paused flag to true
+  - Adds 'paused' class to board (triggers blur effect)
+  - Changes button to ▶ icon
+- [`resumeTimer()`](puzzle.js): Resumes the timer from pause
+  - Resets start timestamp
+  - Clears paused flag
+  - Removes 'paused' class from board (removes blur)
+  - Returns focus to board for immediate keyboard control
+  - Changes button back to ⏸ icon
+- [`stopTimer()`](puzzle.js): Completely stops and resets timer
+  - Clears interval
+  - Resets all timer state variables
+  - Removes 'paused' class
+  - Resets display to "0:00"
+  - Changes button back to ⏸ icon
+- [`freezeTimer()`](puzzle.js): Stops timer without blur (used on win)
+  - Clears interval
+  - Resets timer state but keeps elapsed time in display
+  - Does NOT add blur effect (unlike pauseTimer)
+  - Preserves final time for congratulations dialog
+- [`formatTime(ms)`](puzzle.js): Converts milliseconds to M:SS format
+  - Returns string like "2:34" or "62:15" (no hour formatting)
+  - Pads seconds with leading zero
+- [`updateTimer()`](puzzle.js): Updates timer display
+  - Calculates elapsed time since start + accumulated time
+  - Calls formatTime and updates display element
 
 #### Mouse Control Utilities
 The mouse control system uses shared utility functions to eliminate code duplication between swipe and drag controls:
@@ -333,7 +414,7 @@ Each piece shows its "home" portion of the image:
 ```javascript
 backgroundPosition: `-${homeX*tilePx}px -${homeY*tilePx}px`
 ```
-Gaps show darkened version (brightness 0.125) of their default positions, maintaining their identity even when moved.
+Gaps show darkened version (brightness 0.5) of their default positions, maintaining their identity even when moved.
 
 ## Development Guidelines
 
@@ -477,18 +558,57 @@ Challenge Mode includes automatic win detection:
 - Touch events: Mouse click events work on touch devices
 - Uses `will-change` CSS property for performance
 
+## Dark Mode
+
+The game includes a dark mode theme that can be toggled by clicking the lightbulb icon (💡) in the toolbar:
+
+- **Theme Toggle Button**: Lightbulb icon (💡) in right toolbar group
+- **Persistence**: Theme preference saved to localStorage and restored on page load
+- **Implementation**: Adds/removes `dark-mode` class on body element
+- **Styling**: Dark mode styles defined in [`puzzle.css`](puzzle.css)
+  - Background: #1a1a1a (dark)
+  - Text: #e0e0e0 (light)
+  - Buttons: #2a2a2a background with #555 borders
+  - Challenge info: Translucent blue background maintained
+  - Dialogs: #2a2a2a background with adjusted colors
+  - Form inputs: Dark backgrounds with light text
+  - Primary buttons: Adjusted blue tones for dark mode
+  - All UI elements styled for consistency in dark mode
+
 ## Dialogs
+
+All dialogs support the following dismissal methods:
+- Clicking outside the dialog (on the overlay background) using mousedown event
+- Keyboard shortcuts (Enter/Escape as appropriate for each dialog)
+- Clicking the designated close/cancel button
+
+### Help Dialog
+- Opened by clicking the "?" help button in the toolbar
+- Displays comprehensive controls reference organized by input method:
+  - **Keyboard**: Spacebar for gap switching, arrow keys/WASD for movement
+  - **Mouse Click**: Click piece to move, click gap to select
+  - **Mouse Swipe**: Swipe piece or gap to move in that direction
+  - **Mouse Drag**: Drag piece over gaps or gap over pieces for continuous movement
+- Includes note about large piece and gap swap mechanics
+- Contains "Got it" button to close
+- Enter/Escape keys close dialog
+- Click outside dialog to close
+- Returns focus to board when closed
 
 ### Challenge Dialog
 - Opened by "New Challenge" button
 - Contains:
   - Seed input field (type="number", optional, min=0)
+    - "Daily Challenge" button next to seed input
+    - Clicking "Daily Challenge" populates seed with today's date in YYYYMMDD format (e.g., 20251125)
+    - Enables sharing daily challenges with consistent seeds across all players
   - Steps input field (type="number", default 250, min=1, max=10000)
   - Difficulty preset buttons: Easy (50), Normal (250), Hard (1000), Very Hard (10000)
   - Start Challenge button
   - Cancel button
 - Enter key starts challenge
 - Escape key cancels
+- Click outside dialog to cancel
 - Generates random seed (0 to 2^32-1) if field is empty
 - Only accepts numeric seeds for deterministic LCG behavior
 
@@ -498,6 +618,7 @@ Challenge Mode includes automatic win detection:
 - Displays move count
 - Contains OK button
 - Enter/Escape keys close dialog
+- Click outside dialog to close
 - Returns focus to board when closed
 
 ## Key Implementation Details

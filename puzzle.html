@@ -8,10 +8,16 @@
 </head>
 <body>
   <div class="toolbar">
-    <button id="resetBtn" class="btn">Reset</button>
-    <button id="shuffleBtn" class="btn">Shuffle</button>
-    <button id="challengeBtn" class="btn">New Challenge</button>
-    <button id="giveUpBtn" class="btn" style="display: none;">Give Up</button>
+    <div class="toolbar-left">
+      <button id="resetBtn" class="btn">Reset</button>
+      <button id="shuffleBtn" class="btn">Shuffle</button>
+      <button id="challengeBtn" class="btn">New Challenge</button>
+      <button id="giveUpBtn" class="btn" style="display: none;">Give Up</button>
+    </div>
+    <div class="toolbar-right">
+      <button id="helpBtn" class="btn btn-icon" aria-label="Help" title="Show controls">?</button>
+      <button id="themeToggleBtn" class="btn btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">💡</button>
+    </div>
   </div>
   <div class="game-container">
     <div id="board" tabindex="0" aria-label="Slide puzzle board"></div>
@@ -19,15 +25,53 @@
       <div class="challenge-info-title">Challenge</div>
       <div class="challenge-info-row">Seed: <span id="challengeSeedDisplay"></span></div>
       <div class="challenge-info-row">Shuffling steps: <span id="challengeStepsDisplay"></span></div>
-      <div class="challenge-info-row">Move count: <span id="challengeMovesDisplay">0</span></div>
+      <div class="challenge-stats-container">
+        <div class="challenge-stat-group">
+          <div class="challenge-stat-label">Move Count</div>
+          <div id="challengeMovesDisplay" class="challenge-stat-value">0</div>
+        </div>
+        <div class="challenge-stat-group">
+          <div class="challenge-stat-label">Timer</div>
+          <div class="challenge-timer-row">
+            <div id="challengeTimerDisplay" class="challenge-stat-value">0:00</div>
+            <button id="timerToggleBtn" class="btn-timer-toggle" aria-label="Pause timer" title="Pause">⏸</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="hint">
-    <strong>Keyboard:</strong> <span class="kbd">Space</span> switch selected gap • <span class="kbd">←</span><span class="kbd">→</span><span class="kbd">↑</span><span class="kbd">↓</span> slide a piece into the selected gap<br>
-    <strong>Mouse Click:</strong> Click a piece to move it into an adjacent gap • Click a gap to select it<br>
-    <strong>Mouse Swipe:</strong> Swipe a piece or gap to move in that direction<br>
-    <strong>Mouse Drag:</strong> Drag a piece over gaps or drag a gap over pieces to move continuously<br>
-    Large 2×2 pieces move only if both gaps line up on their path. Adjacent gaps can be swapped.
+
+  <!-- Help Dialog -->
+  <div id="helpDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog">
+      <h2>Controls</h2>
+      <div class="dialog-content">
+        <div class="help-section">
+          <h3>Keyboard</h3>
+          <p><span class="kbd">Space</span> Switch selected gap</p>
+          <p><span class="kbd">←</span><span class="kbd">→</span><span class="kbd">↑</span><span class="kbd">↓</span> or <span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span> Slide a piece into the selected gap</p>
+        </div>
+        <div class="help-section">
+          <h3>Mouse Click</h3>
+          <p>Click a piece to move it into an adjacent gap</p>
+          <p>Click a gap to select it</p>
+        </div>
+        <div class="help-section">
+          <h3>Mouse Swipe</h3>
+          <p>Swipe a piece or gap to move in that direction</p>
+        </div>
+        <div class="help-section">
+          <h3>Mouse Drag</h3>
+          <p>Drag a piece over gaps or drag a gap over pieces to move continuously</p>
+        </div>
+        <div class="help-note">
+          <p><strong>Note:</strong> Large 2×2 pieces move only if both gaps line up on their path. Adjacent gaps can be swapped.</p>
+        </div>
+      </div>
+      <div class="dialog-buttons">
+        <button id="helpCloseBtn" class="btn btn-primary">Got it</button>
+      </div>
+    </div>
   </div>
 
   <!-- Challenge Dialog -->
@@ -37,7 +81,10 @@
       <div class="dialog-content">
         <div class="form-group">
           <label for="seedInput">Seed (leave empty for random):</label>
-          <input type="number" id="seedInput" placeholder="Enter a number" min="0" />
+          <div class="seed-input-group">
+            <input type="number" id="seedInput" placeholder="Enter a number" min="0" />
+            <button type="button" id="dailyChallengeBtn" class="btn btn-primary">Daily Challenge</button>
+          </div>
         </div>
         <div class="form-group">
           <label for="stepsInput">Number of shuffling steps (difficulty):</label>
