@@ -116,7 +116,7 @@ The game has two distinct modes:
 - **UI Elements**: Reset, Shuffle, New Challenge buttons visible
 
 #### Challenge Mode
-- **Purpose**: Solve a specific puzzle configuration with move tracking
+- **Purpose**: Solve a specific puzzle configuration with move tracking and timing
 - **Activation**:
   - Click "New Challenge" button and provide:
     - **Seed**: Numeric value (leave empty for random, range: 0 to 2^32-1)
@@ -125,20 +125,32 @@ The game has two distinct modes:
 - **Features**:
   - Deterministic puzzle generation using seeded RNG
   - Move counter tracks player moves (starts at 0)
+  - Timer tracks elapsed time (starts after shuffle completes)
+  - Pause/Resume button (⏸/▶) to pause timer and prevent moves
   - Shuffle button hidden (puzzle is fixed)
   - Reset button recreates the same challenge
-  - Challenge info box displays seed, steps, and move count
+  - Challenge info box displays seed, steps, move count, and timer
   - Give Up button switches back to Free Play mode
   - **No shuffle animations**: Shuffle executes instantly without visible transitions
   - **URL synchronization**: Browser URL automatically updates to reflect current mode
+- **Timer Behavior**:
+  - Automatically starts when shuffle completes
+  - Can be paused/resumed using the pause button (⏸/▶)
+  - Pause button has fixed 28x28px size for consistent appearance
+  - When paused, all moves and gap switching are disabled
+  - When paused, puzzle board applies blur effect (`filter: blur(8px)`)
+  - Blur is isolated to board only using `isolation: isolate` to prevent bleeding onto neighbors
+  - Stops automatically when puzzle is solved
+  - Displays in M:SS format (e.g., 2:34)
 - **Win Condition**:
-  - When puzzle is solved, congratulations dialog appears
+  - When puzzle is solved, congratulations dialog appears, showing moves and time
   - All moves and gap switching are locked
+  - Timer is frozen
   - Gap selection highlighting is removed
   - "Give Up" button changes to "Free Play"
   - Player can reset challenge or return to Free Play
 - **UI Elements**: Reset Challenge, Give Up, New Challenge buttons visible
-- **Info Display**: Shows "Challenge", seed number, shuffle steps, and current move count
+- **Info Display**: Shows "Challenge", seed number, shuffle steps, move count, and timer with pause button
 
 ### Key Data Structures
 
@@ -156,6 +168,10 @@ challengeSteps       // Number of shuffle steps for challenge (null in Free Play
 challengeMoveCount   // Player's move count in Challenge Mode
 isShuffling          // Flag to prevent move counting during shuffle
 challengeSolved      // Flag indicating if challenge is completed
+timerStartTime       // Timestamp when timer started (null when stopped)
+timerElapsedTime     // Accumulated elapsed time in milliseconds
+timerInterval        // Interval ID for timer updates
+timerPaused          // Boolean flag indicating if timer is paused
 ```
 
 #### Grid Cell Format
