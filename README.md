@@ -1,13 +1,14 @@
 # Slide Puzzle Game
 
-A browser-based slide puzzle game featuring an 8×8 grid with mixed-size pieces and dual-gap mechanics.
+A browser-based slide puzzle game featuring mixed-size pieces and dual-gap mechanics.
 
 ## Features
 
-- **Mixed Piece Sizes**: 30 small (1×1) pieces and 8 large (2×2) pieces
+- **Multiple Board Sizes**: Choose from Default (8×8), Horizontal (16×8), or Vertical (8×16) layouts
+- **Mixed Piece Sizes**: Small (1×1) and large (2×2) pieces
 - **Dual-Gap System**: Two movable gaps that pieces slide into
 - **Two Game Modes**:
-  - **Free Play**: Casual play with shuffle and reset options
+  - **Free Play**: Casual play with shuffle, reset, and board selection
   - **Challenge Mode**: Solve seeded puzzles with move tracking and shareable URLs
 
 ## Controls
@@ -25,6 +26,7 @@ A browser-based slide puzzle game featuring an 8×8 grid with mixed-size pieces 
 ### Buttons
 - **Reset**: Return to solved state (Free Play) or restart challenge
 - **Shuffle**: Randomize the puzzle (Free Play only)
+- **Settings**: Change board size (Free Play only)
 - **New Challenge**: Start a seeded puzzle with move tracking
 - **Give Up**: Return to Free Play mode (Challenge Mode only)
 
@@ -32,13 +34,14 @@ A browser-based slide puzzle game featuring an 8×8 grid with mixed-size pieces 
 
 Create deterministic puzzles that can be shared via URL:
 ```
-index.html?seed=12345&steps=250
+index.html?seed=12345&steps=250&board=horizontal
 ```
 
+- Choose a board layout (Default, Horizontal, or Vertical)
 - Enter a numeric seed (or leave empty for random)
 - Specify shuffle steps (default: 250)
-- Track your moves and compete for best solutions
-- Share challenges via URL
+- Track your moves and time
+- Share challenges via URL (includes board selection)
 
 ## Technical Details
 

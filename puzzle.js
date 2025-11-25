@@ -1,9 +1,19 @@
 (() => {
   // Board configuration object - defines the puzzle layout
   // This structure allows for easy board switching in the future
-  const boardConfig = {
+  
+  // Image mode determines how background images are applied:
+  // - 'single': One image for entire board
+  // - 'horizontal': Two images side by side (left/right halves)
+  // - 'vertical': Two images stacked (top/bottom halves)
+  
+  const defaultBoard = {
     width: 8,           // Board width in tiles
     height: 8,          // Board height in tiles
+    imageMode: 'single', // 'single', 'horizontal', or 'vertical'
+    images: {
+      primary: 'lightworld.png'  // Single image for entire board
+    },
     gapPositions: [     // Default gap positions (array of {x, y})
       {x: 7, y: 6},
       {x: 7, y: 7}
@@ -15,13 +25,76 @@
     ]
   };
   
-  const tilePx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tile')) || 64;
+  const horizontalBoard = {
+    width: 16,          // Double width: 16 tiles
+    height: 8,          // Same height: 8 tiles
+    imageMode: 'horizontal',
+    images: {
+      primary: 'lightworld.png',   // Left half (x: 0-7)
+      secondary: 'darkworld.png'   // Right half (x: 8-15)
+    },
+    gapPositions: [     // Gaps in bottom right corner of right half
+      {x: 15, y: 6},
+      {x: 15, y: 7}
+    ],
+    largePieces: [      // Left half: same as default
+      {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
+      {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
+      {x: 0, y: 6}, {x: 5, y: 6},
+      // Right half: mirror of left half, shifted 8 tiles right
+      {x: 8, y: 0}, {x: 11, y: 0}, {x: 13, y: 0},
+      {x: 8, y: 3}, {x: 11, y: 3}, {x: 14, y: 3},
+      {x: 8, y: 6}, {x: 13, y: 6}
+    ]
+  };
+  
+  const verticalBoard = {
+    width: 8,           // Same width: 8 tiles
+    height: 16,         // Double height: 16 tiles
+    imageMode: 'vertical',
+    images: {
+      primary: 'lightworld.png',   // Top half (y: 0-7)
+      secondary: 'darkworld.png'   // Bottom half (y: 8-15)
+    },
+    gapPositions: [     // Gaps in bottom right corner of bottom half
+      {x: 7, y: 14},
+      {x: 7, y: 15}
+    ],
+    largePieces: [      // Top half: same as default
+      {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
+      {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
+      {x: 0, y: 6}, {x: 5, y: 6},
+      // Bottom half: mirror of top half, shifted 8 tiles down
+      {x: 0, y: 8}, {x: 3, y: 8}, {x: 5, y: 8},
+      {x: 0, y: 11}, {x: 3, y: 11}, {x: 6, y: 11},
+      {x: 0, y: 14}, {x: 5, y: 14}
+    ]
+  };
+  
+  // Board registry for easy lookup
+  const boardRegistry = {
+    'default': defaultBoard,
+    'horizontal': horizontalBoard,
+    'vertical': verticalBoard
+  };
+  
+  // Currently active board configuration
+  let boardConfig = defaultBoard;
+  let currentBoardSlug = 'default';
+  
+  let tilePx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tile')) || 64;
   const boardEl = document.getElementById('board');
   const resetBtn = document.getElementById('resetBtn');
   const shuffleBtn = document.getElementById('shuffleBtn');
   const challengeBtn = document.getElementById('challengeBtn');
   const giveUpBtn = document.getElementById('giveUpBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsDialog = document.getElementById('settingsDialog');
+  const settingsBoardSelect = document.getElementById('settingsBoardSelect');
+  const settingsApplyBtn = document.getElementById('settingsApplyBtn');
+  const settingsCancelBtn = document.getElementById('settingsCancelBtn');
   const challengeDialog = document.getElementById('challengeDialog');
+  const challengeBoardSelect = document.getElementById('challengeBoardSelect');
   const challengeStartBtn = document.getElementById('challengeStartBtn');
   const challengeCancelBtn = document.getElementById('challengeCancelBtn');
   const dailyChallengeBtn = document.getElementById('dailyChallengeBtn');
@@ -76,6 +149,7 @@
   let gameMode = 'freeplay'; // 'freeplay' or 'challenge'
   let challengeSeed = null;
   let challengeSteps = null;
+  let challengeBoard = null; // Board slug for challenge
   let challengeMoveCount = 0;
   let isShuffling = false; // Flag to prevent move counting during shuffle
   let challengeSolved = false; // Flag to track if challenge is solved
@@ -96,6 +170,59 @@
     boardEl.appendChild(wrapper);
   });
 
+  // Helper function to determine which background image a tile should use
+  function getBackgroundImageForPosition(x, y) {
+    if (boardConfig.imageMode === 'single') {
+      return boardConfig.images.primary;
+    } else if (boardConfig.imageMode === 'horizontal') {
+      // Left half uses primary, right half uses secondary
+      const halfWidth = boardConfig.width / 2;
+      return x < halfWidth ? boardConfig.images.primary : boardConfig.images.secondary;
+    } else if (boardConfig.imageMode === 'vertical') {
+      // Top half uses primary, bottom half uses secondary
+      const halfHeight = boardConfig.height / 2;
+      return y < halfHeight ? boardConfig.images.primary : boardConfig.images.secondary;
+    }
+    return boardConfig.images.primary; // Fallback
+  }
+
+  // Helper function to get background size and position for a tile
+  function getBackgroundStyleForTile(homeX, homeY) {
+    const image = getBackgroundImageForPosition(homeX, homeY);
+    let bgSize, bgPosX, bgPosY;
+    
+    if (boardConfig.imageMode === 'single') {
+      // Single image covers entire board
+      bgSize = `calc(${boardConfig.width} * var(--tile)) calc(${boardConfig.height} * var(--tile))`;
+      bgPosX = -homeX * tilePx;
+      bgPosY = -homeY * tilePx;
+    } else if (boardConfig.imageMode === 'horizontal') {
+      // Each image covers half the board width, full height
+      const halfWidth = boardConfig.width / 2;
+      bgSize = `calc(${halfWidth} * var(--tile)) calc(${boardConfig.height} * var(--tile))`;
+      // Adjust position based on which half the tile is in
+      if (homeX < halfWidth) {
+        bgPosX = -homeX * tilePx;
+      } else {
+        bgPosX = -(homeX - halfWidth) * tilePx;
+      }
+      bgPosY = -homeY * tilePx;
+    } else if (boardConfig.imageMode === 'vertical') {
+      // Each image covers full width, half the board height
+      const halfHeight = boardConfig.height / 2;
+      bgSize = `calc(${boardConfig.width} * var(--tile)) calc(${halfHeight} * var(--tile))`;
+      bgPosX = -homeX * tilePx;
+      // Adjust position based on which half the tile is in
+      if (homeY < halfHeight) {
+        bgPosY = -homeY * tilePx;
+      } else {
+        bgPosY = -(homeY - halfHeight) * tilePx;
+      }
+    }
+    
+    return { image, bgSize, bgPosX, bgPosY };
+  }
+
   function initTiles() {
     smallTiles = [];
     bigTiles = [];
@@ -115,7 +242,13 @@
       const id = `B${i}`;
       const el = document.createElement('div');
       el.className = 'tile big';
-      el.style.backgroundPosition = `-${home.x*tilePx}px -${home.y*tilePx}px`;
+      
+      // Set background image and position based on tile's home position
+      const { image, bgSize, bgPosX, bgPosY } = getBackgroundStyleForTile(home.x, home.y);
+      el.style.backgroundImage = `url("${image}")`;
+      el.style.backgroundSize = bgSize;
+      el.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+      
       boardEl.appendChild(el);
       const t = { id, x: home.x, y: home.y, homeX: home.x, homeY: home.y, el };
       bigTiles.push(t);
@@ -132,7 +265,13 @@
         const id = `S${sIdx++}`;
         const el = document.createElement('div');
         el.className = 'tile small';
-        el.style.backgroundPosition = `-${x*tilePx}px -${y*tilePx}px`;
+        
+        // Set background image and position based on tile's home position
+        const { image, bgSize, bgPosX, bgPosY } = getBackgroundStyleForTile(x, y);
+        el.style.backgroundImage = `url("${image}")`;
+        el.style.backgroundSize = bgSize;
+        el.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+        
         boardEl.appendChild(el);
         const t = { id, x, y, homeX: x, homeY: y, el };
         smallTiles.push(t);
@@ -161,6 +300,24 @@
     }
   }
 
+  function switchBoard(boardSlug) {
+    // Switch to a different board configuration
+    if (!boardRegistry[boardSlug]) {
+      console.error(`Unknown board: ${boardSlug}`);
+      return;
+    }
+    
+    boardConfig = boardRegistry[boardSlug];
+    currentBoardSlug = boardSlug;
+    
+    // Update board dimensions
+    boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
+    boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
+    
+    // Reset the puzzle with new board
+    resetState();
+  }
+
   function resetState() {
     // Remove any previous tile DOM (will be re-added in initTiles)
     boardEl.querySelectorAll('.tile').forEach(el => el.remove());
@@ -176,7 +333,10 @@
     }));
     // Fix their background cropping based on home, once
     gapEls.forEach((el, i) => {
-      el.style.backgroundPosition = `-${gaps[i].homeX*tilePx}px -${gaps[i].homeY*tilePx}px`;
+      const { image, bgSize, bgPosX, bgPosY } = getBackgroundStyleForTile(gaps[i].homeX, gaps[i].homeY);
+      el.style.backgroundImage = `url("${image}")`;
+      el.style.backgroundSize = bgSize;
+      el.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
     });
 
     selectedGapIdx = 0;
@@ -186,8 +346,9 @@
 
   function updateUIForMode() {
     if (gameMode === 'challenge') {
-      // Challenge mode: hide Shuffle, show Give Up, show challenge info
+      // Challenge mode: hide Shuffle and Settings, show Give Up, show challenge info
       shuffleBtn.style.display = 'none';
+      settingsBtn.style.display = 'none';
       giveUpBtn.style.display = 'inline-block';
       challengeInfo.style.display = 'block';
       challengeSeedDisplay.textContent = challengeSeed;
@@ -197,8 +358,9 @@
       // Update Give Up button text based on solved state
       giveUpBtn.textContent = challengeSolved ? 'Free Play' : 'Give Up';
     } else {
-      // Free Play mode: show Shuffle, hide Give Up, hide challenge info
+      // Free Play mode: show Shuffle and Settings, hide Give Up, hide challenge info
       shuffleBtn.style.display = 'inline-block';
+      settingsBtn.style.display = 'inline-block';
       giveUpBtn.style.display = 'none';
       challengeInfo.style.display = 'none';
       resetBtn.textContent = 'Reset';
@@ -296,13 +458,15 @@
     const url = new URL(window.location);
     
     if (gameMode === 'challenge' && challengeSeed !== null && challengeSteps !== null) {
-      // Challenge mode: add seed and steps parameters
+      // Challenge mode: add seed, steps, and board parameters
       url.searchParams.set('seed', challengeSeed);
       url.searchParams.set('steps', challengeSteps);
+      url.searchParams.set('board', challengeBoard || currentBoardSlug);
     } else {
-      // Free Play mode: remove parameters
+      // Free Play mode: remove challenge parameters
       url.searchParams.delete('seed');
       url.searchParams.delete('steps');
+      url.searchParams.delete('board');
     }
     
     // Update URL without reloading the page
@@ -313,6 +477,7 @@
     gameMode = 'freeplay';
     challengeSeed = null;
     challengeSteps = null;
+    challengeBoard = null;
     challengeMoveCount = 0;
     challengeSolved = false;
     stopTimer();
@@ -322,15 +487,21 @@
     // Don't reset the board - keep current state
   }
 
-  async function startChallenge(seed, steps) {
+  async function startChallenge(seed, steps, boardSlug = null) {
     gameMode = 'challenge';
     challengeSeed = seed;
     challengeSteps = steps;
+    challengeBoard = boardSlug || currentBoardSlug;
     challengeMoveCount = 0;
     challengeSolved = false;
     
     // Stop any existing timer and remove paused state
     stopTimer();
+    
+    // Switch board if different from current
+    if (challengeBoard !== currentBoardSlug) {
+      switchBoard(challengeBoard);
+    }
     
     updateUIForMode();
     updateURL(); // Update URL when starting challenge
@@ -608,10 +779,12 @@
     }
     
     // Create random number generator (seeded or random)
-    // Combine seed and steps to create a unique seed for this shuffle
-    // This ensures that changing either parameter produces a different shuffle
+    // Combine seed, steps, and board to create a unique seed for this shuffle
+    // This ensures that changing any parameter produces a different shuffle
     // Using XOR with bit shifting to avoid overflow and ensure good bit mixing
-    const combinedSeed = seed !== null ? ((seed ^ (steps << 16)) >>> 0) : null;
+    // Board hash: default=0, horizontal=1, vertical=2 (shifted left by 24 bits)
+    const boardHash = currentBoardSlug === 'horizontal' ? 1 : currentBoardSlug === 'vertical' ? 2 : 0;
+    const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24)) >>> 0) : null;
     const rng = combinedSeed !== null ? new SeededRandom(combinedSeed) : null;
     const random = () => rng ? rng.next() : Math.random();
     const randomInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max);
@@ -1438,7 +1611,7 @@
   resetBtn.addEventListener('click', () => {
     if (gameMode === 'challenge') {
       // In challenge mode, reset recreates the challenge
-      startChallenge(challengeSeed, challengeSteps);
+      startChallenge(challengeSeed, challengeSteps, challengeBoard);
     } else {
       // In free play mode, reset returns to solved state
       resetState();
@@ -1464,8 +1637,53 @@
     }
   });
 
+  // Settings dialog handlers
+  settingsBtn.addEventListener('click', () => {
+    // Set current board in dropdown
+    settingsBoardSelect.value = currentBoardSlug;
+    settingsDialog.style.display = 'flex';
+    settingsBoardSelect.focus();
+  });
+
+  settingsCancelBtn.addEventListener('click', () => {
+    settingsDialog.style.display = 'none';
+    boardEl.focus();
+  });
+
+  settingsApplyBtn.addEventListener('click', () => {
+    const selectedBoard = settingsBoardSelect.value;
+    settingsDialog.style.display = 'none';
+    
+    // Switch board if different
+    if (selectedBoard !== currentBoardSlug) {
+      switchBoard(selectedBoard);
+    }
+    
+    boardEl.focus();
+  });
+
+  // Allow Enter to apply, Escape to cancel
+  settingsDialog.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      settingsApplyBtn.click();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      settingsCancelBtn.click();
+    }
+  });
+
+  // Close settings dialog when clicking outside
+  settingsDialog.addEventListener('mousedown', (e) => {
+    if (e.target === settingsDialog) {
+      settingsCancelBtn.click();
+    }
+  });
+
   // Challenge dialog handlers
   challengeBtn.addEventListener('click', () => {
+    // Set current board in dropdown
+    challengeBoardSelect.value = currentBoardSlug;
     challengeDialog.style.display = 'flex';
     seedInput.focus();
   });
@@ -1497,6 +1715,7 @@
   challengeStartBtn.addEventListener('click', async () => {
     const seedValue = seedInput.value.trim();
     const steps = parseInt(stepsInput.value) || 250;
+    const boardSlug = challengeBoardSelect.value;
     
     // Close dialog
     challengeDialog.style.display = 'none';
@@ -1514,7 +1733,7 @@
     }
     
     // Start the challenge
-    await startChallenge(seed, steps);
+    await startChallenge(seed, steps, boardSlug);
     
     boardEl.focus();
   });
@@ -1599,24 +1818,30 @@
     const urlParams = new URLSearchParams(window.location.search);
     const seedParam = urlParams.get('seed');
     const stepsParam = urlParams.get('steps');
+    const boardParam = urlParams.get('board');
     
-    // Only auto-start if both parameters exist and are non-empty
+    // Only auto-start if both seed and steps parameters exist and are non-empty
     if (seedParam !== null && seedParam.trim() !== '' &&
         stepsParam !== null && stepsParam.trim() !== '') {
       const seed = parseInt(seedParam);
       const steps = parseInt(stepsParam) || 250;
+      const boardSlug = boardParam && boardRegistry[boardParam] ? boardParam : 'default';
       
-      console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}`);
+      console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}, board=${boardSlug}`);
       
       // Start challenge after initialization
       setTimeout(async () => {
-        await startChallenge(seed, steps);
+        await startChallenge(seed, steps, boardSlug);
         boardEl.focus();
       }, 0);
     }
   }
 
   // Initialize
+  // Set initial board dimensions
+  boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
+  boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
+  
   resetState();
   boardEl.focus();
   checkURLParams();

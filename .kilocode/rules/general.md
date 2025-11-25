@@ -6,35 +6,69 @@ This is a browser-based slide puzzle game with a unique 8×8 grid with mixed-siz
 ## Game Mechanics
 
 ### Board Configuration
-The game uses a configurable board object defined in `boardConfig` that specifies:
-- **Grid Size**: 8×8 (64 cells total) - defined by `width` and `height` properties
-- **Pieces**:
-  - 30 small pieces (1×1 unit size)
-  - 8 large pieces (2×2 unit size, equivalent to 4 small pieces)
-- **Gaps**: 2 movable gaps that pieces slide into - defined in `gapPositions` array
-- **Image**: Uses `lightworld.png` as the puzzle image, cropped across pieces
+The game supports multiple board configurations with different layouts and background image modes. Players can switch between boards using the Settings dialog (Free Play) or select a board when starting a challenge.
 
-### Default (Solved) State
-Large piece top-left corners at coordinates (x,y) from top-left (0,0):
-- (0,0), (3,0), (5,0)
-- (0,3), (3,3), (6,3)
-- (0,6), (5,6)
+#### Board Selection System
+- **Free Play Mode**: Settings button (⚙) opens dialog to change board (resets puzzle)
+- **Challenge Mode**: Board selection included in "New Challenge" dialog
+- **URL Parameter**: Board encoded in challenge URLs as `?board=default|horizontal|vertical`
+- **Board Registry**: `boardRegistry` object maps slugs to board configurations
+- **Current Board**: Tracked via `currentBoardSlug` variable
+- **Dynamic Sizing**: Board dimensions update automatically when switching
 
-Default gap positions: (7,6) and (7,7)
+#### Available Board Configurations
 
-These are defined in the `boardConfig` object:
+1. **Default Board** (`defaultBoard`) - Slug: `'default'`
+   - **Grid Size**: 8×8 (64 cells total)
+   - **Image Mode**: `'single'` - One image for entire board
+   - **Background Image**: `lightworld.png`
+   - **Pieces**: 30 small (1×1) + 8 large (2×2)
+   - **Gaps**: 2 gaps at positions (7,6) and (7,7)
+   - **Large Pieces**: Top-left corners at (0,0), (3,0), (5,0), (0,3), (3,3), (6,3), (0,6), (5,6)
+
+2. **Horizontal Board** (`horizontalBoard`) - Slug: `'horizontal'`
+   - **Grid Size**: 16×8 (128 cells total) - double width
+   - **Image Mode**: `'horizontal'` - Two images side by side
+   - **Background Images**:
+     - Left half (x: 0-7): `lightworld.png`
+     - Right half (x: 8-15): `darkworld.png`
+   - **Pieces**: 60 small (1×1) + 16 large (2×2)
+   - **Gaps**: 2 gaps at positions (15,6) and (15,7) - bottom right of right half
+   - **Large Pieces**: Left half mirrors default layout, right half duplicates it shifted 8 tiles right
+
+3. **Vertical Board** (`verticalBoard`) - Slug: `'vertical'`
+   - **Grid Size**: 8×16 (128 cells total) - double height
+   - **Image Mode**: `'vertical'` - Two images stacked vertically
+   - **Background Images**:
+     - Top half (y: 0-7): `lightworld.png`
+     - Bottom half (y: 8-15): `darkworld.png`
+   - **Pieces**: 60 small (1×1) + 16 large (2×2)
+   - **Gaps**: 2 gaps at positions (7,14) and (7,15) - bottom right of bottom half
+   - **Large Pieces**: Top half mirrors default layout, bottom half duplicates it shifted 8 tiles down
+
+#### Board Configuration Structure
 ```javascript
 const boardConfig = {
-  width: 8,
-  height: 8,
-  gapPositions: [{x: 7, y: 6}, {x: 7, y: 7}],
-  largePieces: [
+  width: 8,              // Board width in tiles
+  height: 8,             // Board height in tiles
+  imageMode: 'single',   // 'single', 'horizontal', or 'vertical'
+  images: {
+    primary: 'lightworld.png',    // Primary image (or only image for single mode)
+    secondary: 'darkworld.png'    // Secondary image (for horizontal/vertical modes)
+  },
+  gapPositions: [{x: 7, y: 6}, {x: 7, y: 7}],  // Default gap positions
+  largePieces: [         // Large piece top-left corners
     {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
     {x: 0, y: 6}, {x: 5, y: 6}
   ]
 };
 ```
+
+#### Image Mode Behavior
+- **`'single'`**: One image covers the entire board. Background size is full board dimensions.
+- **`'horizontal'`**: Two images side by side. Each image covers half the board width and full height. Left half uses primary image, right half uses secondary image.
+- **`'vertical'`**: Two images stacked. Each image covers full board width and half the height. Top half uses primary image, bottom half uses secondary image.
 
 ### Controls
 
@@ -79,9 +113,11 @@ const boardConfig = {
 #### Button Controls
 - **Reset Button**: Return to solved state (Free Play) or recreate challenge (Challenge Mode)
 - **Shuffle Button**: Randomize board with 250 valid moves (Free Play only)
-- **New Challenge Button**: Start a new challenge with custom or random seed
+- **Settings Button** (⚙): Change board size with reset warning (Free Play only)
+- **New Challenge Button**: Start a new challenge with custom or random seed and board selection
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
 - **Help Button** (?): Opens controls reference dialog
+- **Theme Toggle** (☀): Switch between light and dark modes
 
 ### Movement Rules
 1. **Small Pieces (1×1)**: Can move into any adjacent gap
@@ -105,15 +141,16 @@ lightworld.png       # Puzzle image (8×8 tile grid)
 
 #### Toolbar Structure
 The toolbar uses flexbox layout with two groups:
-- **`.toolbar`**: Main container with `justify-content: space-between` and `max-width` set to puzzle width (8 tiles)
+- **`.toolbar`**: Main container with `justify-content: space-between` and `max-width` set to puzzle width (default 8 tiles)
 - **`.toolbar-left`**: Left-aligned button group containing:
   - Reset button
   - Shuffle button (hidden in Challenge Mode)
   - New Challenge button
   - Give Up button (shown only in Challenge Mode)
 - **`.toolbar-right`**: Right-aligned button group containing:
+  - Settings button (⚙) - Opens board selection dialog (hidden in Challenge Mode)
   - Help button (?) - Opens controls reference dialog
-  - Theme toggle button (💡) - Toggles dark mode theme
+  - Theme toggle button (☀) - Toggles dark mode theme
   
 This structure ensures the right buttons stay aligned with the puzzle width rather than extending to the window edge.
 
@@ -134,9 +171,10 @@ The game has two distinct modes:
 - **Purpose**: Solve a specific puzzle configuration with move tracking and timing
 - **Activation**:
   - Click "New Challenge" button and provide:
+    - **Board**: Select board layout (Default, Horizontal, or Vertical)
     - **Seed**: Numeric value (leave empty for random, range: 0 to 2^32-1)
     - **Steps**: Number of shuffle moves (default 250)
-  - Or load via URL parameters: `index.html?seed=12345&steps=250`
+  - Or load via URL parameters: `index.html?seed=12345&steps=250&board=horizontal`
 - **Features**:
   - Deterministic puzzle generation using seeded RNG
   - Move counter tracks player moves (starts at 0)
@@ -188,6 +226,9 @@ boardConfig          // Object defining board layout
 
 #### State Variables
 ```javascript
+boardConfig          // Currently active board configuration object
+currentBoardSlug     // Current board slug ('default', 'horizontal', 'vertical')
+boardRegistry        // Map of board slugs to board configuration objects
 grid                 // 2D array: null for gaps, objects for pieces
 smallTiles[]         // Array of {id, x, y, homeX, homeY, el}
 bigTiles[]           // Array of {id, x, y, homeX, homeY, el}
@@ -197,6 +238,7 @@ selectedGapIdx       // Index of selected gap (0 to gaps.length-1)
 gameMode             // 'freeplay' or 'challenge'
 challengeSeed        // Seed used for current challenge (null in Free Play)
 challengeSteps       // Number of shuffle steps for challenge (null in Free Play)
+challengeBoard       // Board slug for current challenge (null in Free Play)
 challengeMoveCount   // Player's move count in Challenge Mode
 isShuffling          // Flag to prevent move counting during shuffle
 challengeSolved      // Flag indicating if challenge is completed
@@ -213,12 +255,41 @@ timerPaused          // Boolean flag indicating if timer is paused
 
 ### Core Functions
 
+#### Background Image Management
+- `getBackgroundImageForPosition(x, y)`: Determines which background image a tile should use
+  - **Single mode**: Returns `boardConfig.images.primary` for all positions
+  - **Horizontal mode**: Returns `primary` for left half (x < width/2), `secondary` for right half
+  - **Vertical mode**: Returns `primary` for top half (y < height/2), `secondary` for bottom half
+  - Used by `getBackgroundStyleForTile()` to set correct image per tile
+
+- `getBackgroundStyleForTile(homeX, homeY)`: Calculates complete background styling for a tile
+  - Returns object with `{image, bgSize, bgPosX, bgPosY}`
+  - **Single mode**:
+    - Background size covers full board dimensions
+    - Position offset by tile's home coordinates
+  - **Horizontal mode**:
+    - Background size covers half board width, full height
+    - Position adjusted for tiles in right half (subtracts halfWidth from X offset)
+  - **Vertical mode**:
+    - Background size covers full width, half board height
+    - Position adjusted for tiles in bottom half (subtracts halfHeight from Y offset)
+  - Used by `initTiles()` and `resetState()` to set tile and gap backgrounds
+
+#### Board Management
+- `switchBoard(boardSlug)`: Switches to a different board configuration
+  - Validates board slug exists in registry
+  - Updates `boardConfig` and `currentBoardSlug`
+  - Updates board element dimensions dynamically
+  - Calls `resetState()` to rebuild puzzle with new board
+  - Used by settings dialog and challenge mode
+
 #### Initialization
 - `initTiles()`: Creates tile DOM elements and data structures
   - Builds big tiles first from `boardConfig.largePieces` array
   - Creates small tiles for remaining uncovered, non-gap cells
   - Uses `boardConfig.gapPositions` to identify gap cells
-  - Sets background-position for each tile to show correct image crop
+  - **Sets background image dynamically** using `getBackgroundStyleForTile()`
+  - Applies `backgroundImage`, `backgroundSize`, and `backgroundPosition` to each tile element
 - `buildGridFromState()`: Rebuilds grid array from current tile positions
   - Creates grid with dimensions `boardConfig.width` × `boardConfig.height`
   - Places big tiles (occupying 2×2 cells each)
@@ -228,6 +299,7 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Removes existing tile DOM elements
   - Calls `initTiles()` to recreate tiles
   - Initializes gaps from `boardConfig.gapPositions` using `map()` for flexibility
+  - **Sets gap backgrounds dynamically** using `getBackgroundStyleForTile()`
   - Calls `buildGridFromState()` and `renderAll()`
 
 #### Rendering
@@ -279,12 +351,13 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Default 250 moves provides good randomization with meaningful piece movements
 
 #### Challenge Management
-- `startChallenge(seed, steps)`: Initializes a new challenge
+- `startChallenge(seed, steps, boardSlug)`: Initializes a new challenge
   - Sets game mode to 'challenge'
-  - Stores seed and steps for reset functionality
+  - Stores seed, steps, and board slug for reset functionality
+  - Switches to specified board if different from current
   - Resets move counter to 0
   - Calls `stopTimer()` to clear any previous timer state
-  - Updates URL with seed and steps parameters
+  - Updates URL with seed, steps, and board parameters
   - Resets to solved state then shuffles with seed (no animations)
   - Starts timer after shuffle completes
 - `switchToFreePlay()`: Returns to Free Play mode
@@ -294,13 +367,14 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Restores gap highlighting
   - Keeps current board state
 - `updateURL()`: Synchronizes browser URL with game state
-  - Adds `?seed=X&steps=Y` parameters in Challenge Mode
+  - Adds `?seed=X&steps=Y&board=Z` parameters in Challenge Mode
   - Removes parameters in Free Play mode
   - Uses `window.history.pushState()` for seamless updates
 - `checkURLParams()`: Auto-starts challenge from URL on page load
-  - Parses `seed` and `steps` query parameters
-  - Automatically enters Challenge Mode if both parameters present
-  - Enables direct linking and bookmarking of specific challenges
+  - Parses `seed`, `steps`, and `board` query parameters
+  - Validates board slug against registry (defaults to 'default' if invalid)
+  - Automatically enters Challenge Mode if seed and steps parameters present
+  - Enables direct linking and bookmarking of specific challenges with board selection
 - `checkWinCondition()`: Verifies if puzzle is solved
   - Checks all tiles are in home positions
   - Checks gaps match `boardConfig.gapPositions`
@@ -311,7 +385,7 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Waits for animation to complete
   - Shows congratulations dialog with move count and time
 - `updateUIForMode()`: Updates UI based on current mode
-  - Shows/hides appropriate buttons
+  - Shows/hides appropriate buttons (Settings hidden in Challenge Mode)
   - Updates button text
   - Displays/hides challenge info
 
@@ -517,7 +591,11 @@ The game includes a `SeededRandom` class for deterministic puzzle generation:
 - Uses Linear Congruential Generator (LCG) algorithm with parameters from Numerical Recipes
 - Ensures identical puzzles across all browsers and operating systems
 - Used by `shuffle()` when seed is provided
-- **Combines seed and steps**: The shuffle function creates a combined seed using `((seed ^ (steps << 16)) >>> 0)` to ensure that changing either the seed OR the step count produces a completely different shuffle. This XOR-based approach with bit shifting avoids overflow issues and provides good bit mixing while staying within the valid 32-bit unsigned integer range.
+- **Combines seed, steps, and board**: The shuffle function creates a combined seed using `((seed ^ (steps << 16) ^ (boardHash << 24)) >>> 0)` to ensure that changing the seed, step count, OR board produces a completely different shuffle
+  - Board hash values: default=0, horizontal=1, vertical=2
+  - Each parameter occupies different bit ranges to avoid collisions
+  - XOR-based approach with bit shifting avoids overflow issues
+  - Provides good bit mixing while staying within valid 32-bit unsigned integer range
 - Random seed generation uses full 32-bit range: `Math.floor(Math.random() * 4294967296)`
 
 ### Move Counting System
@@ -601,9 +679,9 @@ Challenge Mode includes automatic win detection:
 
 ## Dark Mode
 
-The game includes a dark mode theme that can be toggled by clicking the lightbulb icon (💡) in the toolbar:
+The game includes a dark mode theme that can be toggled by clicking the sun icon (☀) in the toolbar:
 
-- **Theme Toggle Button**: Lightbulb icon (💡) in right toolbar group
+- **Theme Toggle Button**: Sun icon (☀) in right toolbar group
 - **Persistence**: Theme preference saved to localStorage and restored on page load
 - **Implementation**: Adds/removes `dark-mode` class on body element
 - **Styling**: Dark mode styles defined in `puzzle.css`
@@ -636,9 +714,25 @@ All dialogs support the following dismissal methods:
 - Click outside dialog to close
 - Returns focus to board when closed
 
+### Settings Dialog
+- Opened by "Settings" button (⚙) in Free Play mode only
+- Contains:
+  - Board selection dropdown with three options:
+    - Default (8×8)
+    - Horizontal (16×8)
+    - Vertical (8×16)
+  - Warning message: "Changing the board will reset the puzzle to its solved state"
+  - Apply button
+  - Cancel button
+- Enter key applies changes
+- Escape key cancels
+- Click outside dialog to cancel
+- Applies board change and resets puzzle when confirmed
+
 ### Challenge Dialog
 - Opened by "New Challenge" button
 - Contains:
+  - Board selection dropdown (same options as Settings dialog)
   - Seed input field (type="number", optional, min=0)
     - "Daily Challenge" button next to seed input
     - Clicking "Daily Challenge" populates seed with today's date in YYYYMMDD format (e.g., 20251125)
@@ -647,6 +741,7 @@ All dialogs support the following dismissal methods:
   - Difficulty preset buttons: Easy (50), Normal (250), Hard (1000), Very Hard (10000)
   - Start Challenge button
   - Cancel button
+- Board selection defaults to currently active board
 - Enter key starts challenge
 - Escape key cancels
 - Click outside dialog to cancel

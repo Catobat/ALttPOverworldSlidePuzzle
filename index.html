@@ -15,8 +15,9 @@
       <button id="giveUpBtn" class="btn" style="display: none;">Give Up</button>
     </div>
     <div class="toolbar-right">
+      <button id="settingsBtn" class="btn btn-icon" aria-label="Settings" title="Settings" style="display: inline-block;">⚙</button>
       <button id="helpBtn" class="btn btn-icon" aria-label="Help" title="Show controls">?</button>
-      <button id="themeToggleBtn" class="btn btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">💡</button>
+      <button id="themeToggleBtn" class="btn btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">☀</button>
     </div>
   </div>
   <div class="game-container">
@@ -74,11 +75,43 @@
     </div>
   </div>
 
+  <!-- Settings Dialog -->
+  <div id="settingsDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog">
+      <h2>Settings</h2>
+      <div class="dialog-content">
+        <div class="form-group">
+          <label for="settingsBoardSelect">Board:</label>
+          <select id="settingsBoardSelect" class="board-select">
+            <option value="default">Default (8×8)</option>
+            <option value="horizontal">Horizontal (16×8)</option>
+            <option value="vertical">Vertical (8×16)</option>
+          </select>
+        </div>
+        <div class="settings-warning">
+          <strong>Note:</strong> Changing the board will reset the puzzle to its solved state.
+        </div>
+      </div>
+      <div class="dialog-buttons">
+        <button id="settingsApplyBtn" class="btn btn-primary">Apply</button>
+        <button id="settingsCancelBtn" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Challenge Dialog -->
   <div id="challengeDialog" class="dialog-overlay" style="display: none;">
     <div class="dialog">
       <h2>New Challenge</h2>
       <div class="dialog-content">
+        <div class="form-group">
+          <label for="challengeBoardSelect">Board:</label>
+          <select id="challengeBoardSelect" class="board-select">
+            <option value="default">Default (8×8)</option>
+            <option value="horizontal">Horizontal (16×8)</option>
+            <option value="vertical">Vertical (8×16)</option>
+          </select>
+        </div>
         <div class="form-group">
           <label for="seedInput">Seed (leave empty for random):</label>
           <div class="seed-input-group">

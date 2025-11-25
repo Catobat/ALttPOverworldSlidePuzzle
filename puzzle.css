@@ -169,8 +169,7 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
 
 .tile {
   position: absolute;
-  background-image: url("lightworld.png");
-  background-size: calc(8 * var(--tile)) calc(8 * var(--tile));
+  /* background-image, background-size, and background-position are set dynamically in JS */
   background-repeat: no-repeat;
   box-sizing: border-box;
   /* thin black outlines on piece edges */
@@ -216,8 +215,7 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   position: absolute;
   width: 100%;
   height: 100%;
-  background-image: url("lightworld.png");
-  background-size: calc(8 * var(--tile)) calc(8 * var(--tile));
+  /* background-image, background-size, and background-position are set dynamically in JS */
   background-repeat: no-repeat;
   /* darkened so gaps are distinct, but still show the image crop from their default positions */
   filter: brightness(0.5);
@@ -308,7 +306,8 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   font-weight: 500;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid #888;
@@ -316,6 +315,10 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   font-size: 1rem;
   box-sizing: border-box;
   font-family: inherit;
+}
+
+.board-select {
+  cursor: pointer;
 }
 
 .seed-input-group {
@@ -335,10 +338,24 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   align-self: stretch;
 }
 
-.form-group input:focus {
+.form-group input:focus,
+.form-group select:focus {
   outline: none;
   border-color: rgb(100, 200, 255);
   box-shadow: 0 0 0 2px rgba(100, 200, 255, 0.2);
+}
+
+.settings-warning {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255, 200, 100, 0.1);
+  border-left: 3px solid rgb(255, 180, 80);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.settings-warning strong {
+  font-weight: 600;
 }
 
 .difficulty-presets {
@@ -443,15 +460,22 @@ body.dark-mode .form-group label {
   color: #e0e0e0;
 }
 
-body.dark-mode .form-group input {
+body.dark-mode .form-group input,
+body.dark-mode .form-group select {
   background: #1a1a1a;
   border-color: #555;
   color: #e0e0e0;
 }
 
-body.dark-mode .form-group input:focus {
+body.dark-mode .form-group input:focus,
+body.dark-mode .form-group select:focus {
   border-color: rgb(100, 200, 255);
   box-shadow: 0 0 0 2px rgba(100, 200, 255, 0.3);
+}
+
+body.dark-mode .settings-warning {
+  background: rgba(255, 200, 100, 0.1);
+  border-color: rgba(255, 180, 80, 0.5);
 }
 
 body.dark-mode .preset-btn {
