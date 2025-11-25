@@ -1403,6 +1403,25 @@
     }
   });
 
+  // Close dialogs when clicking outside (on overlay)
+  challengeDialog.addEventListener('mousedown', (e) => {
+    if (e.target === challengeDialog) {
+      challengeCancelBtn.click();
+    }
+  });
+
+  congratsDialog.addEventListener('mousedown', (e) => {
+    if (e.target === congratsDialog) {
+      congratsOkBtn.click();
+    }
+  });
+
+  helpDialog.addEventListener('mousedown', (e) => {
+    if (e.target === helpDialog) {
+      helpCloseBtn.click();
+    }
+  });
+
   // Parse URL query parameters and auto-start challenge if present
   function checkURLParams() {
     const urlParams = new URLSearchParams(window.location.search);

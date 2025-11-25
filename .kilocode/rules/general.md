@@ -495,6 +495,11 @@ Challenge Mode includes automatic win detection:
 
 ## Dialogs
 
+All dialogs support the following dismissal methods:
+- Clicking outside the dialog (on the overlay background) using mousedown event
+- Keyboard shortcuts (Enter/Escape as appropriate for each dialog)
+- Clicking the designated close/cancel button
+
 ### Help Dialog
 - Opened by clicking the "?" help button in the toolbar
 - Displays comprehensive controls reference organized by input method:
@@ -505,6 +510,7 @@ Challenge Mode includes automatic win detection:
 - Includes note about large piece and gap swap mechanics
 - Contains "Got it" button to close
 - Enter/Escape keys close dialog
+- Click outside dialog to close
 - Returns focus to board when closed
 
 ### Challenge Dialog
@@ -517,6 +523,7 @@ Challenge Mode includes automatic win detection:
   - Cancel button
 - Enter key starts challenge
 - Escape key cancels
+- Click outside dialog to cancel
 - Generates random seed (0 to 2^32-1) if field is empty
 - Only accepts numeric seeds for deterministic LCG behavior
 
@@ -526,6 +533,7 @@ Challenge Mode includes automatic win detection:
 - Displays move count
 - Contains OK button
 - Enter/Escape keys close dialog
+- Click outside dialog to close
 - Returns focus to board when closed
 
 ## Key Implementation Details
