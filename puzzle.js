@@ -18,6 +18,9 @@
   const congratsDialog = document.getElementById('congratsDialog');
   const congratsMessage = document.getElementById('congratsMessage');
   const congratsOkBtn = document.getElementById('congratsOkBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const helpDialog = document.getElementById('helpDialog');
+  const helpCloseBtn = document.getElementById('helpCloseBtn');
 
   // Seeded Random Number Generator (LCG algorithm)
   // This ensures deterministic results across all browsers and operating systems
@@ -1378,6 +1381,25 @@
     if (e.key === 'Enter' || e.key === 'Escape') {
       e.preventDefault();
       congratsOkBtn.click();
+    }
+  });
+
+  // Help dialog handlers
+  helpBtn.addEventListener('click', () => {
+    helpDialog.style.display = 'flex';
+    helpCloseBtn.focus();
+  });
+
+  helpCloseBtn.addEventListener('click', () => {
+    helpDialog.style.display = 'none';
+    boardEl.focus();
+  });
+
+  // Allow Enter/Escape to close help dialog
+  helpDialog.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      helpCloseBtn.click();
     }
   });
 

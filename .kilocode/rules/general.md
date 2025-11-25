@@ -67,6 +67,7 @@ These are defined in the [`bigHomes`](puzzle.js) and [`defaultGaps`](puzzle.js) 
 - **Shuffle Button**: Randomize board with 250 valid moves (Free Play only)
 - **New Challenge Button**: Start a new challenge with custom or random seed
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
+- **Help Button** (?): Opens controls reference dialog
 
 ### Movement Rules
 1. **Small Pieces (1×1)**: Can move into any adjacent gap
@@ -85,6 +86,21 @@ puzzle.js            # Game logic and event handling
 lightworld.png       # Puzzle image (8×8 tile grid)
 .clinerules          # This AI instructions file
 ```
+
+### UI Layout
+
+#### Toolbar Structure
+The toolbar uses flexbox layout with two groups:
+- **`.toolbar`**: Main container with `justify-content: space-between` and `max-width` set to puzzle width (8 tiles)
+- **`.toolbar-left`**: Left-aligned button group containing:
+  - Reset button
+  - Shuffle button (hidden in Challenge Mode)
+  - New Challenge button
+  - Give Up button (shown only in Challenge Mode)
+- **`.toolbar-right`**: Right-aligned button group containing:
+  - Help button (?) - Opens controls reference dialog
+  
+This structure ensures the help button stays right-aligned with the puzzle width rather than extending to the window edge.
 
 ### Game Modes
 
@@ -478,6 +494,18 @@ Challenge Mode includes automatic win detection:
 - Uses `will-change` CSS property for performance
 
 ## Dialogs
+
+### Help Dialog
+- Opened by clicking the "?" help button in the toolbar
+- Displays comprehensive controls reference organized by input method:
+  - **Keyboard**: Spacebar for gap switching, arrow keys/WASD for movement
+  - **Mouse Click**: Click piece to move, click gap to select
+  - **Mouse Swipe**: Swipe piece or gap to move in that direction
+  - **Mouse Drag**: Drag piece over gaps or gap over pieces for continuous movement
+- Includes note about large piece and gap swap mechanics
+- Contains "Got it" button to close
+- Enter/Escape keys close dialog
+- Returns focus to board when closed
 
 ### Challenge Dialog
 - Opened by "New Challenge" button
