@@ -134,6 +134,12 @@ The game has two distinct modes:
   - Give Up button switches back to Free Play mode
   - **No shuffle animations**: Shuffle executes instantly without visible transitions
   - **URL synchronization**: Browser URL automatically updates to reflect current mode
+- **Challenge Info Layout**:
+  - Displays seed and shuffling steps as compact text rows
+  - Move Count and Timer displayed side-by-side below
+  - Each stat has a small label (0.875rem) above large value (1.425rem)
+  - Timer includes pause/resume button (⏸/▶) next to time display
+  - Challenge box has min-width of 220px to accommodate "M:SS" time without layout shifts
 - **Timer Behavior**:
   - Automatically starts when shuffle completes
   - Can be paused/resumed using the pause button (⏸/▶)
@@ -141,8 +147,10 @@ The game has two distinct modes:
   - When paused, all moves and gap switching are disabled
   - When paused, puzzle board applies blur effect (`filter: blur(8px)`)
   - Blur is isolated to board only using `isolation: isolate` to prevent bleeding onto neighbors
-  - Stops automatically when puzzle is solved
-  - Displays in M:SS format (e.g., 2:34)
+  - When resumed, focus returns to the board automatically for immediate keyboard control
+  - Stops automatically when puzzle is solved (without blur effect)
+  - Timer button is disabled when puzzle is solved (no pause/resume after completion)
+  - Displays in M:SS format (e.g., 2:34 for times under 1 hour, 62:15 for 1 hour 2 minutes)
 - **Win Condition**:
   - When puzzle is solved, congratulations dialog appears, showing moves and time
   - All moves and gap switching are locked
@@ -171,7 +179,7 @@ isShuffling          // Flag to prevent move counting during shuffle
 challengeSolved      // Flag indicating if challenge is completed
 timerStartTime       // Timestamp when timer started (null when stopped)
 timerElapsedTime     // Accumulated elapsed time in milliseconds
-timerInterval        // Interval ID for timer updates
+timerInterval        // Interval ID for timer updates (100ms)
 timerPaused          // Boolean flag indicating if timer is paused
 ```
 
@@ -250,10 +258,13 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Sets game mode to 'challenge'
   - Stores seed and steps for reset functionality
   - Resets move counter to 0
+  - Calls [`stopTimer()`](puzzle.js) to clear any previous timer state
   - Updates URL with seed and steps parameters
   - Resets to solved state then shuffles with seed (no animations)
+  - Starts timer after shuffle completes
 - [`switchToFreePlay()`](puzzle.js): Returns to Free Play mode
   - Clears challenge data
+  - Stops and resets timer
   - Removes URL parameters
   - Restores gap highlighting
   - Keeps current board state
@@ -270,13 +281,50 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Checks gaps are in default positions
 - [`handleWin()`](puzzle.js): Handles challenge completion
   - Sets `challengeSolved` flag
+  - Calls [`freezeTimer()`](puzzle.js) to stop timer without blur
   - Removes gap highlighting
   - Waits for animation to complete
-  - Shows congratulations dialog with move count
+  - Shows congratulations dialog with move count and time
 - [`updateUIForMode()`](puzzle.js): Updates UI based on current mode
   - Shows/hides appropriate buttons
   - Updates button text
   - Displays/hides challenge info
+
+#### Timer Functions
+- [`startTimer()`](puzzle.js): Starts the challenge timer
+  - Resets elapsed time to 0
+  - Sets start timestamp
+  - Creates 100ms interval to update display
+  - Sets pause button to ⏸ icon
+- [`pauseTimer()`](puzzle.js): Pauses the timer and blurs board
+  - Stops timer interval
+  - Accumulates elapsed time
+  - Sets paused flag to true
+  - Adds 'paused' class to board (triggers blur effect)
+  - Changes button to ▶ icon
+- [`resumeTimer()`](puzzle.js): Resumes the timer from pause
+  - Resets start timestamp
+  - Clears paused flag
+  - Removes 'paused' class from board (removes blur)
+  - Returns focus to board for immediate keyboard control
+  - Changes button back to ⏸ icon
+- [`stopTimer()`](puzzle.js): Completely stops and resets timer
+  - Clears interval
+  - Resets all timer state variables
+  - Removes 'paused' class
+  - Resets display to "0:00"
+  - Changes button back to ⏸ icon
+- [`freezeTimer()`](puzzle.js): Stops timer without blur (used on win)
+  - Clears interval
+  - Resets timer state but keeps elapsed time in display
+  - Does NOT add blur effect (unlike pauseTimer)
+  - Preserves final time for congratulations dialog
+- [`formatTime(ms)`](puzzle.js): Converts milliseconds to M:SS format
+  - Returns string like "2:34" or "62:15" (no hour formatting)
+  - Pads seconds with leading zero
+- [`updateTimer()`](puzzle.js): Updates timer display
+  - Calculates elapsed time since start + accumulated time
+  - Calls formatTime and updates display element
 
 #### Mouse Control Utilities
 The mouse control system uses shared utility functions to eliminate code duplication between swipe and drag controls:
