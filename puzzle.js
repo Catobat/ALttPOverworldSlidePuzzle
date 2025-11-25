@@ -1,5 +1,20 @@
 (() => {
-  const SIZE = 8;
+  // Board configuration object - defines the puzzle layout
+  // This structure allows for easy board switching in the future
+  const boardConfig = {
+    width: 8,           // Board width in tiles
+    height: 8,          // Board height in tiles
+    gapPositions: [     // Default gap positions (array of {x, y})
+      {x: 7, y: 6},
+      {x: 7, y: 7}
+    ],
+    largePieces: [      // Large piece top-left corners (array of {x, y})
+      {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
+      {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
+      {x: 0, y: 6}, {x: 5, y: 6}
+    ]
+  };
+  
   const tilePx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tile')) || 64;
   const boardEl = document.getElementById('board');
   const resetBtn = document.getElementById('resetBtn');
@@ -48,14 +63,6 @@
     }
   }
 
-  // Big piece default top-lefts (x,y)
-  const bigHomes = [
-    {x:0,y:0}, {x:3,y:0}, {x:5,y:0},
-    {x:0,y:3}, {x:3,y:3}, {x:6,y:3},
-    {x:0,y:6}, {x:5,y:6}
-  ];
-  const defaultGaps = [{x:7,y:6},{x:7,y:7}];
-
   // State
   let grid; // 2D array: null=gaps; or {type:'small'|'big', id, ox, oy}
   let smallTiles = []; // {id, x,y, homeX,homeY, el}
@@ -95,8 +102,8 @@
     tileById.clear();
 
     // Make a quick mask for big home coverage
-    const covered = [...Array(SIZE)].map(()=>Array(SIZE).fill(false));
-    bigHomes.forEach(({x,y})=>{
+    const covered = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(false));
+    boardConfig.largePieces.forEach(({x,y})=>{
       for(let dy=0; dy<2; dy++){
         for(let dx=0; dx<2; dx++){
           covered[y+dy][x+dx] = true;
@@ -104,7 +111,7 @@
       }
     });
     // Create big tiles first
-    bigHomes.forEach((home, i) => {
+    boardConfig.largePieces.forEach((home, i) => {
       const id = `B${i}`;
       const el = document.createElement('div');
       el.className = 'tile big';
@@ -116,10 +123,10 @@
     });
 
     // Create small tiles on cells not covered by bigs and not default gaps
-    const isDefaultGap = (x,y) => defaultGaps.some(g => g.x===x && g.y===y);
+    const isDefaultGap = (x,y) => boardConfig.gapPositions.some(g => g.x===x && g.y===y);
     let sIdx = 0;
-    for(let y=0; y<SIZE; y++){
-      for(let x=0; x<SIZE; x++){
+    for(let y=0; y<boardConfig.height; y++){
+      for(let x=0; x<boardConfig.width; x++){
         if(covered[y][x]) continue;
         if(isDefaultGap(x,y)) continue;
         const id = `S${sIdx++}`;
@@ -135,7 +142,7 @@
   }
 
   function buildGridFromState() {
-    grid = [...Array(SIZE)].map(()=>Array(SIZE).fill(null));
+    grid = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(null));
     // Place big tiles
     for (const t of bigTiles) {
       for(let dy=0; dy<2; dy++){
@@ -160,10 +167,13 @@
     initTiles();
 
     // Initialize gaps with identity and home crop
-    gaps = [
-      { id:'G0', x: defaultGaps[0].x, y: defaultGaps[0].y, homeX: defaultGaps[0].x, homeY: defaultGaps[0].y },
-      { id:'G1', x: defaultGaps[1].x, y: defaultGaps[1].y, homeX: defaultGaps[1].x, homeY: defaultGaps[1].y },
-    ];
+    gaps = boardConfig.gapPositions.map((gapPos, i) => ({
+      id: `G${i}`,
+      x: gapPos.x,
+      y: gapPos.y,
+      homeX: gapPos.x,
+      homeY: gapPos.y
+    }));
     // Fix their background cropping based on home, once
     gapEls.forEach((el, i) => {
       el.style.backgroundPosition = `-${gaps[i].homeX*tilePx}px -${gaps[i].homeY*tilePx}px`;
@@ -345,7 +355,7 @@
     }
     // Also check gaps are in default positions
     for (let i = 0; i < gaps.length; i++) {
-      if (gaps[i].x !== defaultGaps[i].x || gaps[i].y !== defaultGaps[i].y) return false;
+      if (gaps[i].x !== boardConfig.gapPositions[i].x || gaps[i].y !== boardConfig.gapPositions[i].y) return false;
     }
     return true;
   }
@@ -418,7 +428,7 @@
     if (dir === 'left') { fromX = g.x + 1; fromY = g.y; dx = -1; dy = 0; }
     if (dir === 'right'){ fromX = g.x - 1; fromY = g.y; dx = 1; dy = 0; }
 
-    if (fromX < 0 || fromX >= SIZE || fromY < 0 || fromY >= SIZE) return false;
+    if (fromX < 0 || fromX >= boardConfig.width || fromY < 0 || fromY >= boardConfig.height) return false;
 
     // If adjacent cell is the other gap, swap the gaps
     const otherIdx = 1 - selectedGapIdx;
@@ -473,7 +483,7 @@
       // Determine destination face cells (must be both gaps), and freed cells after move
       let dest = [], freed = [];
       if (dx === 1) { // right
-        if (t.x + 2 >= SIZE) return false;
+        if (t.x + 2 >= boardConfig.width) return false;
         dest = [{x:t.x+2, y:t.y}, {x:t.x+2, y:t.y+1}];
         freed = [{x:t.x, y:t.y}, {x:t.x, y:t.y+1}];
       } else if (dx === -1) { // left
@@ -481,7 +491,7 @@
         dest = [{x:t.x-1, y:t.y}, {x:t.x-1, y:t.y+1}];
         freed = [{x:t.x+1, y:t.y}, {x:t.x+1, y:t.y+1}];
       } else if (dy === 1) { // down
-        if (t.y + 2 >= SIZE) return false;
+        if (t.y + 2 >= boardConfig.height) return false;
         dest = [{x:t.x, y:t.y+2}, {x:t.x+1, y:t.y+2}];
         freed = [{x:t.x, y:t.y}, {x:t.x+1, y:t.y}];
       } else if (dy === -1) { // up
@@ -555,7 +565,7 @@
         if (dir === 'down') { fromY = g.y - 1; fromX = g.x; dx = 0; dy = 1; }
         if (dir === 'left') { fromX = g.x + 1; fromY = g.y; dx = -1; dy = 0; }
         if (dir === 'right'){ fromX = g.x - 1; fromY = g.y; dx = 1; dy = 0; }
-        if (fromX < 0 || fromX >= SIZE || fromY < 0 || fromY >= SIZE) continue;
+        if (fromX < 0 || fromX >= boardConfig.width || fromY < 0 || fromY >= boardConfig.height) continue;
 
         // gap-gap swap allowed
         const otherIdx = 1 - gi;
@@ -574,9 +584,9 @@
         if (occ.type === 'big') {
           const t = tileById.get(occ.id);
           const dest = [];
-          if (dx === 1) { if (t.x + 2 >= SIZE) continue; dest.push({x:t.x+2, y:t.y},{x:t.x+2,y:t.y+1}); }
+          if (dx === 1) { if (t.x + 2 >= boardConfig.width) continue; dest.push({x:t.x+2, y:t.y},{x:t.x+2,y:t.y+1}); }
           if (dx === -1){ if (t.x - 1 < 0) continue; dest.push({x:t.x-1, y:t.y},{x:t.x-1,y:t.y+1}); }
-          if (dy === 1) { if (t.y + 2 >= SIZE) continue; dest.push({x:t.x, y:t.y+2},{x:t.x+1,y:t.y+2}); }
+          if (dy === 1) { if (t.y + 2 >= boardConfig.height) continue; dest.push({x:t.x, y:t.y+2},{x:t.x+1,y:t.y+2}); }
           if (dy === -1){ if (t.y - 1 < 0) continue; dest.push({x:t.x, y:t.y-1},{x:t.x+1,y:t.y-1}); }
           const bothNull = dest.every(c => grid[c.y][c.x] === null);
           const selectedIsDest = dest.some(c => c.x === g.x && c.y === g.y);
@@ -891,7 +901,7 @@
     const gridY = Math.floor(clickY / tilePx);
     
     // Check bounds
-    if (gridX < 0 || gridX >= SIZE || gridY < 0 || gridY >= SIZE) {
+    if (gridX < 0 || gridX >= boardConfig.width || gridY < 0 || gridY >= boardConfig.height) {
       return;
     }
 
@@ -936,7 +946,7 @@
     
     if (startedOnGap) {
       // GAP DRAG CONTROL: Started on a gap, check if we're over a piece or the other gap
-      if (currentGridX >= 0 && currentGridX < SIZE && currentGridY >= 0 && currentGridY < SIZE) {
+      if (currentGridX >= 0 && currentGridX < boardConfig.width && currentGridY >= 0 && currentGridY < boardConfig.height) {
         const currentCell = grid[currentGridY][currentGridX];
         
         // Check if we're over the other gap
@@ -1031,7 +1041,7 @@
       }
     } else {
       // PIECE DRAG CONTROL: Started on a piece
-      if (currentGridX >= 0 && currentGridX < SIZE && currentGridY >= 0 && currentGridY < SIZE) {
+      if (currentGridX >= 0 && currentGridX < boardConfig.width && currentGridY >= 0 && currentGridY < boardConfig.height) {
         const currentCell = grid[currentGridY][currentGridX];
         
         if (currentCell === null) {
@@ -1112,7 +1122,7 @@
           else if (swipeDir === 'down') targetY++;
           else if (swipeDir === 'up') targetY--;
           
-          if (targetX >= 0 && targetX < SIZE && targetY >= 0 && targetY < SIZE) {
+          if (targetX >= 0 && targetX < boardConfig.width && targetY >= 0 && targetY < boardConfig.height) {
             const targetCell = grid[targetY][targetX];
             
             // Check if target is the other gap
@@ -1311,14 +1321,31 @@
       
       // No swipe detected - handle click behavior
       if (wasAlreadySelected) {
-        // Gap was already selected - check if the other gap is adjacent and swap if so
-        const otherGapIdx = 1 - clickedGapIdx;
-        const otherGap = gaps[otherGapIdx];
-        const dx = otherGap.x - gridX;
-        const dy = otherGap.y - gridY;
+        // Gap was already selected - only swap if exactly one gap is adjacent (unambiguous)
+        // Count how many gaps are adjacent to this gap
+        let adjacentGapCount = 0;
+        let adjacentGapIdx = -1;
         
-        if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-          // Adjacent gap exists - swap them
+        for (let i = 0; i < gaps.length; i++) {
+          if (i === clickedGapIdx) continue; // Skip self
+          
+          const otherGap = gaps[i];
+          const dx = otherGap.x - gridX;
+          const dy = otherGap.y - gridY;
+          
+          // Check if this gap is adjacent
+          if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
+            adjacentGapCount++;
+            adjacentGapIdx = i;
+          }
+        }
+        
+        // Only swap if exactly one gap is adjacent (unambiguous)
+        if (adjacentGapCount === 1) {
+          const otherGap = gaps[adjacentGapIdx];
+          const dx = otherGap.x - gridX;
+          const dy = otherGap.y - gridY;
+          
           // Determine swap direction (tryMove direction is OPPOSITE of where the gap is)
           let gapSwapDir = null;
           if (dx === 1 && dy === 0) gapSwapDir = 'left';   // other gap is right, so move from left
@@ -1330,6 +1357,7 @@
             tryMove(gapSwapDir);
           }
         }
+        // If 0 or 2+ adjacent gaps, do nothing (ambiguous or impossible)
         return;
       } else {
         // Gap was not selected - just select it

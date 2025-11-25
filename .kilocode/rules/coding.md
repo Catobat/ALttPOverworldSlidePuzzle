@@ -35,6 +35,13 @@ This project uses a strict three-file structure:
 - For player-facing changes (new features, controls, game modes), **CONSIDER** updating [`README.md`](README.md)
 - Keep [`README.md`](README.md) brief and user-focused - only include what players need to know
 
+### Documentation Style
+- **DO NOT** include line numbers when referencing code in documentation
+- Reference code by function names, variable names, class names, or other stable identifiers
+- Line numbers change frequently and make documentation maintenance difficult
+- Example: Use `initTiles()` instead of `initTiles() (line 92)`
+- Exception: Line numbers are acceptable in temporary debugging notes or issue reports
+
 ### After Making Changes
 - **WAIT** for user confirmation of success
 - **PROVIDE** clear testing instructions

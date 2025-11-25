@@ -6,11 +6,12 @@ This is a browser-based slide puzzle game with a unique 8×8 grid with mixed-siz
 ## Game Mechanics
 
 ### Board Configuration
-- **Grid Size**: 8×8 (64 cells total)
-- **Pieces**: 
+The game uses a configurable board object defined in `boardConfig` that specifies:
+- **Grid Size**: 8×8 (64 cells total) - defined by `width` and `height` properties
+- **Pieces**:
   - 30 small pieces (1×1 unit size)
   - 8 large pieces (2×2 unit size, equivalent to 4 small pieces)
-- **Gaps**: 2 movable gaps that pieces slide into
+- **Gaps**: 2 movable gaps that pieces slide into - defined in `gapPositions` array
 - **Image**: Uses `lightworld.png` as the puzzle image, cropped across pieces
 
 ### Default (Solved) State
@@ -21,7 +22,19 @@ Large piece top-left corners at coordinates (x,y) from top-left (0,0):
 
 Default gap positions: (7,6) and (7,7)
 
-These are defined in the [`bigHomes`](puzzle.js) and [`defaultGaps`](puzzle.js) constants.
+These are defined in the `boardConfig` object:
+```javascript
+const boardConfig = {
+  width: 8,
+  height: 8,
+  gapPositions: [{x: 7, y: 6}, {x: 7, y: 7}],
+  largePieces: [
+    {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
+    {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
+    {x: 0, y: 6}, {x: 5, y: 6}
+  ]
+};
+```
 
 ### Controls
 
@@ -58,9 +71,10 @@ These are defined in the [`bigHomes`](puzzle.js) and [`defaultGaps`](puzzle.js) 
   - Allows continuous swapping during a single drag operation
 - **Left Click on Gap**:
   - First click on an unselected gap: Selects the gap (updates selection highlighting)
-  - Click on an already-selected gap: Checks if the other gap is adjacent
-    - If adjacent, swaps the two gaps
-    - If not adjacent, gap remains selected
+  - Click on an already-selected gap: Counts how many other gaps are adjacent
+    - If exactly 1 gap is adjacent: Swaps with that gap (unambiguous)
+    - If 0 or 2+ gaps are adjacent: Does nothing (ambiguous or impossible)
+    - This ensures gap swapping only happens when the intent is clear
 
 #### Button Controls
 - **Reset Button**: Return to solved state (Free Play) or recreate challenge (Challenge Mode)
@@ -163,14 +177,23 @@ The game has two distinct modes:
 
 ### Key Data Structures
 
+#### Board Configuration
+```javascript
+boardConfig          // Object defining board layout
+  .width             // Board width in tiles (8)
+  .height            // Board height in tiles (8)
+  .gapPositions[]    // Array of default gap positions [{x, y}, ...]
+  .largePieces[]     // Array of large piece top-left corners [{x, y}, ...]
+```
+
 #### State Variables
 ```javascript
 grid                 // 2D array: null for gaps, objects for pieces
 smallTiles[]         // Array of {id, x, y, homeX, homeY, el}
 bigTiles[]           // Array of {id, x, y, homeX, homeY, el}
 tileById             // Map for quick tile lookup by ID
-gaps[]               // [{id, x, y, homeX, homeY}] - 2 gap objects
-selectedGapIdx       // 0 or 1, indicates which gap is selected
+gaps[]               // [{id, x, y, homeX, homeY}] - gap objects (length = boardConfig.gapPositions.length)
+selectedGapIdx       // Index of selected gap (0 to gaps.length-1)
 gameMode             // 'freeplay' or 'challenge'
 challengeSeed        // Seed used for current challenge (null in Free Play)
 challengeSteps       // Number of shuffle steps for challenge (null in Free Play)
@@ -191,31 +214,33 @@ timerPaused          // Boolean flag indicating if timer is paused
 ### Core Functions
 
 #### Initialization
-- [`initTiles()`](puzzle.js): Creates tile DOM elements and data structures
-  - Builds big tiles first from [`bigHomes`](puzzle.js) array
+- `initTiles()`: Creates tile DOM elements and data structures
+  - Builds big tiles first from `boardConfig.largePieces` array
   - Creates small tiles for remaining uncovered, non-gap cells
+  - Uses `boardConfig.gapPositions` to identify gap cells
   - Sets background-position for each tile to show correct image crop
-- [`buildGridFromState()`](puzzle.js): Rebuilds grid array from current tile positions
+- `buildGridFromState()`: Rebuilds grid array from current tile positions
+  - Creates grid with dimensions `boardConfig.width` × `boardConfig.height`
   - Places big tiles (occupying 2×2 cells each)
   - Places small tiles (occupying 1 cell each)
   - Carves out gaps (sets cells to null)
-- [`resetState()`](puzzle.js): Resets to solved state
+- `resetState()`: Resets to solved state
   - Removes existing tile DOM elements
-  - Calls [`initTiles()`](puzzle.js) to recreate tiles
-  - Initializes gaps with identity and home positions
-  - Calls [`buildGridFromState()`](puzzle.js) and [`renderAll()`](puzzle.js)
+  - Calls `initTiles()` to recreate tiles
+  - Initializes gaps from `boardConfig.gapPositions` using `map()` for flexibility
+  - Calls `buildGridFromState()` and `renderAll()`
 
 #### Rendering
-- [`renderAll()`](puzzle.js): Updates all tile positions in DOM
-  - Iterates through [`smallTiles`](puzzle.js) and [`bigTiles`](puzzle.js)
+- `renderAll()`: Updates all tile positions in DOM
+  - Iterates through `smallTiles` and `bigTiles`
   - Sets CSS `left` and `top` properties based on x,y coordinates
-  - Calls [`renderGaps()`](puzzle.js)
-- [`renderGaps()`](puzzle.js): Updates gap positions and selection highlight
+  - Calls `renderGaps()`
+- `renderGaps()`: Updates gap positions and selection highlight
   - Positions gap DOM elements at current gap coordinates
-  - Toggles `.selected` class based on [`selectedGapIdx`](puzzle.js)
+  - Toggles `.selected` class based on `selectedGapIdx`
 
 #### Movement Logic
-- [`tryMove(dir)`](puzzle.js): Main movement function
+- `tryMove(dir)`: Main movement function
   - **CRITICAL**: The `dir` parameter is counterintuitive - it specifies where to look for something to move INTO the gap, NOT the direction of movement
     - `tryMove('right')` looks at `g.x - 1` (to the LEFT of the gap)
     - `tryMove('left')` looks at `g.x + 1` (to the RIGHT of the gap)
@@ -231,16 +256,16 @@ timerPaused          // Boolean flag indicating if timer is paused
     - Moves piece and repositions both gaps to freed cells
     - Maintains gap alignment by row/column
   - Returns true on success, false if move is invalid
-- [`enumerateValidMoves()`](puzzle.js): Returns all legal moves for current state
+- `enumerateValidMoves()`: Returns all legal moves for current state
   - Iterates through both gaps and all four directions
   - Checks validity of each potential move
   - Tags each move with metadata: `isBig` (large piece move) and `isGapSwap` (gap swap move)
-  - Used by [`shuffle()`](puzzle.js) function
+  - Used by `shuffle()` function
 
 #### Shuffling
-- [`shuffle(steps, seed)`](puzzle.js): Performs intelligent random valid moves with weighted priorities
+- `shuffle(steps, seed)`: Performs intelligent random valid moves with weighted priorities
   - Disables buttons during shuffle
-  - Calls [`enumerateValidMoves()`](puzzle.js) to get legal moves
+  - Calls `enumerateValidMoves()` to get legal moves
   - **Anti-reversal logic**: Remembers last move and filters out immediate reversals unless no other options exist
   - **Weighted selection** creates varied, interesting shuffles:
     - **Big piece moves**: 10x weight (highest priority) - encourages moving large pieces
@@ -254,151 +279,152 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Default 250 moves provides good randomization with meaningful piece movements
 
 #### Challenge Management
-- [`startChallenge(seed, steps)`](puzzle.js): Initializes a new challenge
+- `startChallenge(seed, steps)`: Initializes a new challenge
   - Sets game mode to 'challenge'
   - Stores seed and steps for reset functionality
   - Resets move counter to 0
-  - Calls [`stopTimer()`](puzzle.js) to clear any previous timer state
+  - Calls `stopTimer()` to clear any previous timer state
   - Updates URL with seed and steps parameters
   - Resets to solved state then shuffles with seed (no animations)
   - Starts timer after shuffle completes
-- [`switchToFreePlay()`](puzzle.js): Returns to Free Play mode
+- `switchToFreePlay()`: Returns to Free Play mode
   - Clears challenge data
   - Stops and resets timer
   - Removes URL parameters
   - Restores gap highlighting
   - Keeps current board state
-- [`updateURL()`](puzzle.js): Synchronizes browser URL with game state
+- `updateURL()`: Synchronizes browser URL with game state
   - Adds `?seed=X&steps=Y` parameters in Challenge Mode
   - Removes parameters in Free Play mode
   - Uses `window.history.pushState()` for seamless updates
-- [`checkURLParams()`](puzzle.js): Auto-starts challenge from URL on page load
+- `checkURLParams()`: Auto-starts challenge from URL on page load
   - Parses `seed` and `steps` query parameters
   - Automatically enters Challenge Mode if both parameters present
   - Enables direct linking and bookmarking of specific challenges
-- [`checkWinCondition()`](puzzle.js): Verifies if puzzle is solved
+- `checkWinCondition()`: Verifies if puzzle is solved
   - Checks all tiles are in home positions
-  - Checks gaps are in default positions
-- [`handleWin()`](puzzle.js): Handles challenge completion
+  - Checks gaps match `boardConfig.gapPositions`
+- `handleWin()`: Handles challenge completion
   - Sets `challengeSolved` flag
-  - Calls [`freezeTimer()`](puzzle.js) to stop timer without blur
+  - Calls `freezeTimer()` to stop timer without blur
   - Removes gap highlighting
   - Waits for animation to complete
   - Shows congratulations dialog with move count and time
-- [`updateUIForMode()`](puzzle.js): Updates UI based on current mode
+- `updateUIForMode()`: Updates UI based on current mode
   - Shows/hides appropriate buttons
   - Updates button text
   - Displays/hides challenge info
 
 #### Timer Functions
-- [`startTimer()`](puzzle.js): Starts the challenge timer
+- `startTimer()`: Starts the challenge timer
   - Resets elapsed time to 0
   - Sets start timestamp
   - Creates 100ms interval to update display
   - Sets pause button to ⏸ icon
-- [`pauseTimer()`](puzzle.js): Pauses the timer and blurs board
+- `pauseTimer()`: Pauses the timer and blurs board
   - Stops timer interval
   - Accumulates elapsed time
   - Sets paused flag to true
   - Adds 'paused' class to board (triggers blur effect)
   - Changes button to ▶ icon
-- [`resumeTimer()`](puzzle.js): Resumes the timer from pause
+- `resumeTimer()`: Resumes the timer from pause
   - Resets start timestamp
   - Clears paused flag
   - Removes 'paused' class from board (removes blur)
   - Returns focus to board for immediate keyboard control
   - Changes button back to ⏸ icon
-- [`stopTimer()`](puzzle.js): Completely stops and resets timer
+- `stopTimer()`: Completely stops and resets timer
   - Clears interval
   - Resets all timer state variables
   - Removes 'paused' class
   - Resets display to "0:00"
   - Changes button back to ⏸ icon
-- [`freezeTimer()`](puzzle.js): Stops timer without blur (used on win)
+- `freezeTimer()`: Stops timer without blur (used on win)
   - Clears interval
   - Resets timer state but keeps elapsed time in display
   - Does NOT add blur effect (unlike pauseTimer)
   - Preserves final time for congratulations dialog
-- [`formatTime(ms)`](puzzle.js): Converts milliseconds to M:SS format
+- `formatTime(ms)`: Converts milliseconds to M:SS format
   - Returns string like "2:34" or "62:15" (no hour formatting)
   - Pads seconds with leading zero
-- [`updateTimer()`](puzzle.js): Updates timer display
+- `updateTimer()`: Updates timer display
   - Calculates elapsed time since start + accumulated time
   - Calls formatTime and updates display element
 
 #### Mouse Control Utilities
 The mouse control system uses shared utility functions to eliminate code duplication between swipe and drag controls:
 
-- [`getCellsForTile(tile, clickedCell, gridX, gridY)`](puzzle.js): Returns array of cells to check for a tile
+- `getCellsForTile(tile, clickedCell, gridX, gridY)`: Returns array of cells to check for a tile
   - Small pieces (1×1): Returns single cell `[{x, y}]`
   - Big pieces (2×2): Returns all 4 cells of the piece
   - Used by all control methods for consistent cell enumeration
 
-- [`findAdjacentGaps(cells, gaps)`](puzzle.js): Determines which gaps are adjacent to given cells
+- `findAdjacentGaps(cells, gaps)`: Determines which gaps are adjacent to given cells
   - Returns `{gap0: {adjacent, dx, dy}, gap1: {adjacent, dx, dy}}`
   - Checks all cells against both gaps
   - Stores direction vectors for later use
   - Eliminates duplicate adjacency checking logic
 
-- [`vectorToDirection(dx, dy, invert)`](puzzle.js): Converts direction vector to tryMove() direction string
+- `vectorToDirection(dx, dy, invert)`: Converts direction vector to tryMove() direction string
   - Normal mode: `dx=1, dy=0` → `'right'` (for piece drag)
   - Inverted mode: `dx=1, dy=0` → `'left'` (for gap drag)
   - Handles the counterintuitive tryMove() direction semantics
   - Used by all control methods for consistent direction calculation
 
-- [`isInValidDragRegion(mouseX, mouseY, sourceDx, sourceDy)`](puzzle.js): Checks if mouse is in valid 75% drag region
+- `isInValidDragRegion(mouseX, mouseY, sourceDx, sourceDy)`: Checks if mouse is in valid 75% drag region
   - Excludes the 1/4 edge closest to the source
   - Works for both piece→gap and gap→piece scenarios
   - Uses quarter-tile calculations for precise region detection
 
-- [`detectSwipeDirection(startPos, currentPos, threshold)`](puzzle.js): Detects swipe direction from mouse movement
+- `detectSwipeDirection(startPos, currentPos, threshold)`: Detects swipe direction from mouse movement
   - Returns direction string or `null` if below threshold
   - Uses dominant axis to determine direction
   - Consistent swipe detection across all handlers
 
-- [`isGapInSwipeDirection(cells, gap, swipeDir)`](puzzle.js): Checks if gap is in swipe direction relative to cells
+- `isGapInSwipeDirection(cells, gap, swipeDir)`: Checks if gap is in swipe direction relative to cells
   - Iterates through cells checking gap position
   - Returns boolean for quick validation
   - Simplifies swipe validation logic
 
 #### Event Handling
-- **Keyboard Events**: Attached to [`boardEl`](puzzle.js)
-  - Spacebar: Toggles [`selectedGapIdx`](puzzle.js) and calls [`renderGaps()`](puzzle.js) (blocked when challenge solved)
-  - Arrow keys/WASD: Calls [`tryMove()`](puzzle.js) with appropriate direction (blocked when challenge solved)
+- **Keyboard Events**: Attached to `boardEl`
+  - Spacebar: Toggles `selectedGapIdx` and calls `renderGaps()` (blocked when challenge solved)
+  - Arrow keys/WASD: Calls `tryMove()` with appropriate direction (blocked when challenge solved)
 
 - **Mouse Events**: Use shared utility functions for consistent behavior
-  - **Mousedown** (on [`boardEl`](puzzle.js)): Records initial position, time, and grid cell
-  - **Mousemove** (on [`boardEl`](puzzle.js)): Handles drag and swipe preview
-    - **Gap Drag Control**: Uses [`getCellsForTile()`](puzzle.js), [`isInValidDragRegion()`](puzzle.js), and [`vectorToDirection()`](puzzle.js) with invert=true
-    - **Piece Drag Control**: Uses [`getCellsForTile()`](puzzle.js), [`isInValidDragRegion()`](puzzle.js), and [`vectorToDirection()`](puzzle.js) with invert=false
-    - **Swipe Preview**: Uses [`detectSwipeDirection()`](puzzle.js), [`getCellsForTile()`](puzzle.js), and [`isGapInSwipeDirection()`](puzzle.js)
+  - **Mousedown** (on `boardEl`): Records initial position, time, and grid cell
+  - **Mousemove** (on `boardEl`): Handles drag and swipe preview
+    - **Gap Drag Control**: Uses `getCellsForTile()`, `isInValidDragRegion()`, and `vectorToDirection()` with invert=true
+    - **Piece Drag Control**: Uses `getCellsForTile()`, `isInValidDragRegion()`, and `vectorToDirection()` with invert=false
+    - **Swipe Preview**: Uses `detectSwipeDirection()`, `getCellsForTile()`, and `isGapInSwipeDirection()`
     - Applies 5px threshold for swipe detection
     - Shows 15px visual preview offset during valid swipe
     - Clears preview if swipe becomes invalid or drops below threshold
   - **Mouseup** (on `document`): Completes click or swipe action
-    - Uses [`detectSwipeDirection()`](puzzle.js) for swipe detection
-    - Uses [`getCellsForTile()`](puzzle.js) for cell enumeration
-    - Uses [`findAdjacentGaps()`](puzzle.js) for adjacency checking
-    - Uses [`isGapInSwipeDirection()`](puzzle.js) for swipe validation
-    - Uses [`vectorToDirection()`](puzzle.js) for direction calculation
+    - Uses `detectSwipeDirection()` for swipe detection
+    - Uses `getCellsForTile()` for cell enumeration
+    - Uses `findAdjacentGaps()` for adjacency checking
+    - Uses `isGapInSwipeDirection()` for swipe validation
+    - Uses `vectorToDirection()` for direction calculation
     - Clears swipe preview transform
     - If swipe detected (≥5px), moves piece in swipe direction if gap exists
     - If no swipe, uses click behavior (selected gap or only adjacent gap)
   - **Clicking on gap**:
-    - First click on unselected gap: Selects the gap (updates [`selectedGapIdx`](puzzle.js))
-    - Click on already-selected gap: Checks if the other gap is adjacent
-      - If adjacent, swaps the two gaps using [`tryMove()`](puzzle.js)
-      - If not adjacent, gap remains selected
+    - First click on unselected gap: Selects the gap (updates `selectedGapIdx`)
+    - Click on already-selected gap: Counts how many other gaps are adjacent
+      - If exactly 1 gap is adjacent: Swaps with that gap using `tryMove()`
+      - If 0 or 2+ gaps are adjacent: Does nothing (ambiguous or impossible)
+      - This prevents accidental swaps and ensures clear user intent
     - All gap interactions blocked when challenge is solved
 
 - **Button Events**:
-  - Reset button: Calls [`resetState()`](puzzle.js) in Free Play or [`startChallenge()`](puzzle.js) in Challenge Mode
-  - Shuffle button: Calls [`shuffle(250)`](puzzle.js) (Free Play only)
+  - Reset button: Calls `resetState()` in Free Play or `startChallenge()` in Challenge Mode
+  - Shuffle button: Calls `shuffle(250)` (Free Play only)
   - New Challenge button: Opens challenge dialog
-  - Give Up button: Calls [`switchToFreePlay()`](puzzle.js) (Challenge Mode only)
+  - Give Up button: Calls `switchToFreePlay()` (Challenge Mode only)
 
 ### CSS Variables & Styling
-Defined in [`puzzle.css`](puzzle.css):
+Defined in `puzzle.css`:
 - `--tile`: 64px (base tile size)
 - `.tile.small`: 1×1 tile (64px)
 - `.tile.big`: 2×2 tile (128px)
@@ -420,63 +446,77 @@ Gaps show darkened version (brightness 0.5) of their default positions, maintain
 
 ### When Modifying Mouse Controls
 1. Use the shared utility functions to maintain consistency:
-   - [`getCellsForTile()`](puzzle.js) for cell enumeration
-   - [`findAdjacentGaps()`](puzzle.js) for adjacency checking
-   - [`vectorToDirection()`](puzzle.js) for direction conversion
-   - [`isInValidDragRegion()`](puzzle.js) for drag region validation
-   - [`detectSwipeDirection()`](puzzle.js) for swipe detection
-   - [`isGapInSwipeDirection()`](puzzle.js) for swipe validation
+   - `getCellsForTile()` for cell enumeration
+   - `findAdjacentGaps()` for adjacency checking
+   - `vectorToDirection()` for direction conversion
+   - `isInValidDragRegion()` for drag region validation
+   - `detectSwipeDirection()` for swipe detection
+   - `isGapInSwipeDirection()` for swipe validation
 2. When adding new control methods, reuse these utilities to avoid code duplication
 3. Test all control methods (click, swipe, drag) after making changes
-4. Remember that [`vectorToDirection()`](puzzle.js) has an `invert` parameter for gap drag control
+4. Remember that `vectorToDirection()` has an `invert` parameter for gap drag control
 
 ### When Modifying Movement Logic
 1. Always update both the tile/gap positions AND rebuild the grid
-2. Call [`buildGridFromState()`](puzzle.js) after position changes
-3. Update DOM with [`renderAll()`](puzzle.js) or specific render functions
+2. Call `buildGridFromState()` after position changes
+3. Update DOM with `renderAll()` or specific render functions
 4. Test with both small and large pieces
 5. Ensure gap identity is preserved (gaps remember their home crop)
-6. **IMPORTANT**: Remember that [`tryMove(dir)`](puzzle.js) direction is inverted - it looks in the OPPOSITE direction of where you want to move something. The [`vectorToDirection()`](puzzle.js) utility handles this automatically.
+6. **IMPORTANT**: Remember that `tryMove(dir)` direction is inverted - it looks in the OPPOSITE direction of where you want to move something. The `vectorToDirection()` utility handles this automatically.
 
 ### When Adding Features
 - Keep the three-file structure (HTML/CSS/JS separation)
-- Maintain the 80ms transition timing for consistency in [`puzzle.css`](puzzle.css)
+- Maintain the 80ms transition timing for consistency in `puzzle.css`
 - Preserve the gap identity system (gaps remember their home crop)
 - Ensure keyboard focus on board element for controls to work
 - Follow the existing pattern of disabling buttons during operations
 
 ### When Debugging
-- Check [`grid`](puzzle.js) array state (should match visual board)
-- Verify [`selectedGapIdx`](puzzle.js) matches visual selection
+- Check `grid` array state (should match visual board)
+- Verify `selectedGapIdx` matches visual selection
 - Ensure large pieces maintain 2×2 coverage in grid
 - Validate gap positions are always null in grid
-- Check that [`tileById`](puzzle.js) Map is properly populated
+- Check that `tileById` Map is properly populated
 
 ### Image Requirements
 - Image must be square and divisible by 8
 - Default: 512×512px (64px per tile)
 - Format: PNG with transparency support
-- Filename: `lightworld.png` (referenced in [`puzzle.css`](puzzle.css) for `.tile` and `.gap` classes)
+- Filename: `lightworld.png` (referenced in `puzzle.css` for `.tile` and `.gap` classes)
 
 ## Common Modifications
 
-### Change Board Size
-1. Update [`SIZE`](puzzle.js) constant
-2. Adjust [`bigHomes`](puzzle.js) and [`defaultGaps`](puzzle.js) arrays
-3. Update CSS `--tile` variable in [`puzzle.css`](puzzle.css) if needed
-4. Provide appropriately sized image
+### Change Board Configuration
+The board is now configured via the `boardConfig` object, making it easy to create different board layouts:
+
+1. **Change Board Size**:
+   - Update `boardConfig.width` and `boardConfig.height`
+   - Adjust `boardConfig.largePieces` array for new layout
+   - Adjust `boardConfig.gapPositions` array for new gap locations
+   - Update CSS `--tile` variable in `puzzle.css` if needed
+   - Provide appropriately sized image
+
+2. **Add Multiple Board Configurations**:
+   - Create additional board configuration objects with the same structure
+   - Implement board selection UI to switch between configurations
+   - Simply swap the active `boardConfig` reference to change boards
+
+3. **Support Variable Gap Count**:
+   - Add or remove entries in `boardConfig.gapPositions` array
+   - Gap initialization uses `map()` to support any number of gaps
+   - Ensure gap-related logic handles variable gap counts appropriately
 
 ### Change Tile Size
-1. Modify CSS variable in [`puzzle.css`](puzzle.css): `--tile: 64px;`
+1. Modify CSS variable in `puzzle.css`: `--tile: 64px;`
 2. Image dimensions should be `SIZE * tile_size`
-3. No JavaScript changes needed (uses computed style in [`puzzle.js`](puzzle.js))
+3. No JavaScript changes needed (uses computed style)
 
 ### Seeded Random Number Generator
-The game includes a [`SeededRandom`](puzzle.js) class for deterministic puzzle generation:
+The game includes a `SeededRandom` class for deterministic puzzle generation:
 - **Accepts numeric seeds only** (0 to 2^32-1 for optimal LCG performance)
 - Uses Linear Congruential Generator (LCG) algorithm with parameters from Numerical Recipes
 - Ensures identical puzzles across all browsers and operating systems
-- Used by [`shuffle()`](puzzle.js) when seed is provided
+- Used by `shuffle()` when seed is provided
 - **Combines seed and steps**: The shuffle function creates a combined seed using `((seed ^ (steps << 16)) >>> 0)` to ensure that changing either the seed OR the step count produces a completely different shuffle. This XOR-based approach with bit shifting avoids overflow issues and provides good bit mixing while staying within the valid 32-bit unsigned integer range.
 - Random seed generation uses full 32-bit range: `Math.floor(Math.random() * 4294967296)`
 
@@ -490,21 +530,21 @@ In Challenge Mode, moves are tracked:
 
 ### Win Detection System
 Challenge Mode includes automatic win detection:
-- [`checkWinCondition()`](puzzle.js) called after each move
+- `checkWinCondition()` called after each move
 - Verifies all tiles are in home positions
 - Verifies gaps are in default positions
 - When solved:
-  - [`handleWin()`](puzzle.js) is called
+  - `handleWin()` is called
   - All moves are blocked
   - Gap highlighting is removed
   - Congratulations dialog appears after animation
   - "Give Up" button changes to "Free Play"
 
 ### Add Undo Functionality
-1. Maintain move history stack in [`puzzle.js`](puzzle.js)
+1. Maintain move history stack
 2. Store state snapshots (tile positions, gap positions, selectedGapIdx)
-3. Implement reverse move logic in [`puzzle.js`](puzzle.js)
-4. Add undo button in [`index.html`](index.html) that pops from history and restores state
+3. Implement reverse move logic
+4. Add undo button that pops from history and restores state
 
 ## Testing Checklist
 
@@ -542,14 +582,14 @@ Challenge Mode includes automatic win detection:
 - [ ] Gap highlighting restores when switching to Free Play
 
 ## Performance Notes
-- [`shuffle()`](puzzle.js) behavior varies by mode:
+- `shuffle()` behavior varies by mode:
   - **Free Play**: Uses `await` every 10 moves to prevent UI freezing, shows animations
   - **Challenge Mode**: Runs at full speed with no delays, disables transitions for instant execution
-- CSS transitions in [`puzzle.css`](puzzle.css) handled by browser (GPU accelerated with `will-change`)
+- CSS transitions in `puzzle.css` handled by browser (GPU accelerated with `will-change`)
 - `.no-transitions` class disables all tile/gap transitions during Challenge Mode shuffle
-- [`buildGridFromState()`](puzzle.js) is O(n²) but n=8 so negligible
-- No memory leaks: tiles reused on reset via [`initTiles()`](puzzle.js)
-- [`tileById`](puzzle.js) Map provides O(1) tile lookup
+- `buildGridFromState()` is O(n²) but n=8 so negligible
+- No memory leaks: tiles reused on reset via `initTiles()`
+- `tileById` Map provides O(1) tile lookup
 
 ## Browser Compatibility
 - Modern browsers (ES6+ required)
@@ -566,7 +606,7 @@ The game includes a dark mode theme that can be toggled by clicking the lightbul
 - **Theme Toggle Button**: Lightbulb icon (💡) in right toolbar group
 - **Persistence**: Theme preference saved to localStorage and restored on page load
 - **Implementation**: Adds/removes `dark-mode` class on body element
-- **Styling**: Dark mode styles defined in [`puzzle.css`](puzzle.css)
+- **Styling**: Dark mode styles defined in `puzzle.css`
   - Background: #1a1a1a (dark)
   - Text: #e0e0e0 (light)
   - Buttons: #2a2a2a background with #555 borders
@@ -632,7 +672,7 @@ Gaps maintain their identity throughout the game:
 - When gaps move, their identity follows them (not their position)
 
 ### Large Piece Movement Algorithm
-In [`tryMove()`](puzzle.js) for big pieces:
+In `tryMove()` for big pieces:
 1. Calculate destination face cells (2 cells in movement direction)
 2. Calculate freed cells (2 cells on opposite face)
 3. Verify both destination cells are gaps
@@ -641,10 +681,10 @@ In [`tryMove()`](puzzle.js) for big pieces:
 6. Move piece and reposition both gaps simultaneously
 
 ### Shuffle Algorithm
-[`shuffle(steps, seed)`](puzzle.js) ensures solvability with intelligent move selection:
+`shuffle(steps, seed)` ensures solvability with intelligent move selection:
 - Only uses valid moves from current state
 - Never creates impossible configurations
-- Uses [`enumerateValidMoves()`](puzzle.js) to get legal moves with metadata
+- Uses `enumerateValidMoves()` to get legal moves with metadata
 - **Animation control**: Detects game mode and disables transitions in Challenge Mode
 
 **Move Selection Strategy:**
