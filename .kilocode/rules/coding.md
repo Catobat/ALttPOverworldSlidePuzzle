@@ -20,7 +20,7 @@ This file contains specific rules and guidelines for AI coding assistants workin
 
 ### Three-File Architecture
 This project uses a strict three-file structure:
-- [`puzzle.html`](puzzle.html) - Structure only
+- [`index.html`](index.html) - Structure only
 - [`puzzle.css`](puzzle.css) - Styling only  
 - [`puzzle.js`](puzzle.js) - Logic only
 

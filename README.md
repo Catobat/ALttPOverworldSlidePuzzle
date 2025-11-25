@@ -32,7 +32,7 @@ A browser-based slide puzzle game featuring an 8×8 grid with mixed-size pieces 
 
 Create deterministic puzzles that can be shared via URL:
 ```
-puzzle.html?seed=12345&steps=250
+index.html?seed=12345&steps=250
 ```
 
 - Enter a numeric seed (or leave empty for random)
@@ -46,7 +46,7 @@ For comprehensive technical documentation, game mechanics, and development guide
 
 ## Quick Start
 
-1. Open [`puzzle.html`](puzzle.html) in a modern web browser
+1. Open [`index.html`](index.html) in a modern web browser
 2. Use keyboard or mouse to slide pieces
 3. Try the shuffle button or start a challenge!
 

@@ -80,7 +80,7 @@ These are defined in the [`bigHomes`](puzzle.js) and [`defaultGaps`](puzzle.js) 
 
 ### File Structure
 ```
-puzzle.html          # Main HTML structure and page layout
+index.html          # Main HTML structure and page layout
 puzzle.css           # All styling (tiles, gaps, animations)
 puzzle.js            # Game logic and event handling
 lightworld.png       # Puzzle image (8×8 tile grid)
@@ -122,7 +122,7 @@ The game has two distinct modes:
   - Click "New Challenge" button and provide:
     - **Seed**: Numeric value (leave empty for random, range: 0 to 2^32-1)
     - **Steps**: Number of shuffle moves (default 250)
-  - Or load via URL parameters: `puzzle.html?seed=12345&steps=250`
+  - Or load via URL parameters: `index.html?seed=12345&steps=250`
 - **Features**:
   - Deterministic puzzle generation using seeded RNG
   - Move counter tracks player moves (starts at 0)
@@ -504,7 +504,7 @@ Challenge Mode includes automatic win detection:
 1. Maintain move history stack in [`puzzle.js`](puzzle.js)
 2. Store state snapshots (tile positions, gap positions, selectedGapIdx)
 3. Implement reverse move logic in [`puzzle.js`](puzzle.js)
-4. Add undo button in [`puzzle.html`](puzzle.html) that pops from history and restores state
+4. Add undo button in [`index.html`](index.html) that pops from history and restores state
 
 ## Testing Checklist
 
