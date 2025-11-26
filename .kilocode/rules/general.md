@@ -114,6 +114,7 @@ const boardConfig = {
 - **Reset Button**: Return to solved state (Free Play) or recreate challenge (Challenge Mode)
 - **Shuffle Button**: Randomize board with 250 valid moves (Free Play only)
 - **Settings Button** (⚙): Change board size with reset warning (Free Play only)
+- **Auto-Fit Toggle** (⊡): Enable/disable automatic board resizing for mobile devices
 - **New Challenge Button**: Start a new challenge with custom or random seed and board selection
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
 - **Help Button** (?): Opens controls reference dialog
@@ -141,7 +142,7 @@ lightworld.png       # Puzzle image (8×8 tile grid)
 
 #### Toolbar Structure
 The toolbar uses flexbox layout with two groups:
-- **`.toolbar`**: Main container with `justify-content: space-between` and `max-width` set to puzzle width (default 8 tiles)
+- **`.toolbar`**: Main container with `justify-content: space-between` and `max-width` set dynamically to match current board width
 - **`.toolbar-left`**: Left-aligned button group containing:
   - Reset button
   - Shuffle button (hidden in Challenge Mode)
@@ -149,6 +150,7 @@ The toolbar uses flexbox layout with two groups:
   - Give Up button (shown only in Challenge Mode)
 - **`.toolbar-right`**: Right-aligned button group containing:
   - Settings button (⚙) - Opens board selection dialog (hidden in Challenge Mode)
+  - Auto-fit button (⊡) - Toggles automatic board resizing
   - Help button (?) - Opens controls reference dialog
   - Theme toggle button (☀) - Toggles dark mode theme
   
@@ -693,6 +695,83 @@ The game includes a dark mode theme that can be toggled by clicking the sun icon
   - Form inputs: Dark backgrounds with light text
   - Primary buttons: Adjusted blue tones for dark mode
   - All UI elements styled for consistency in dark mode
+
+## Auto-Fit Mode
+
+The game includes an auto-fit feature that automatically resizes the board to fit mobile devices and smaller screens:
+
+### Basic Usage
+- **Toggle Button**: Square icon (⊡) in right toolbar group
+- **Default State**: Off by default
+- **Activation**: Click the ⊡ button to enable/disable
+- **Persistence**: Preference saved to localStorage and restored on page load
+
+### How It Works
+- **Dynamic Tile Sizing**: When enabled, adjusts the `--tile` CSS variable to fit the viewport
+- **Calculation**: `newTileSize = (viewportWidth - 40px) / boardConfig.width`
+  - 40px padding accounts for body margins
+  - Tile size rounds down to nearest pixel
+- **Responsive**: Updates automatically when window is resized
+- **Board-Aware**: Recalculates when switching between board sizes (Default 8×8, Horizontal 16×8, Vertical 8×16)
+
+### Implementation Details
+
+#### State Variables
+```javascript
+baseTilePx        // Constant: original tile size (64px)
+tilePx            // Variable: current tile size (changes with auto-fit)
+autoFitEnabled    // Boolean: whether auto-fit is active
+```
+
+#### Key Functions
+- `applyAutoFit()`: Toggles auto-fit mode on/off
+  - Adds/removes `auto-fit` class on body element
+  - Calls `updateAutoFitScale()` when enabling (with double requestAnimationFrame for timing)
+  - Resets to base tile size when disabling
+  - Updates toolbar max-width and board dimensions
+  
+- `updateAutoFitScale()`: Calculates and applies responsive sizing
+  - Measures viewport width
+  - Compares against board width at base tile size
+  - If board is too wide: calculates new tile size, updates CSS variable, updates `tilePx`
+  - If board fits naturally: resets to base tile size
+  - Updates toolbar max-width to match board width dynamically
+  - Updates board dimensions via calc() expressions
+  - Calls `renderAll()` to reposition tiles
+  - Temporarily disables transitions during resize (via `.no-transitions` class)
+
+- `getBackgroundPositionCalc(homeX, homeY)`: Generates CSS calc() expressions for background positioning
+  - Returns calc() expressions that reference `var(--tile)`
+  - Backgrounds automatically adjust when `--tile` changes
+  - **Single mode**: Simple offset multiplication: `calc(-homeX * var(--tile))`
+  - **Horizontal mode**: Adjusts X offset for right half tiles (subtracts halfWidth)
+  - **Vertical mode**: Adjusts Y offset for bottom half tiles (subtracts halfHeight)
+  - Used by `initTiles()` and `resetState()` to set tile/gap backgrounds
+
+#### Integration Points
+- **Initialization**: Applied before `resetState()` if enabled from localStorage
+- **Board Switching**: `switchBoard()` updates toolbar max-width and calls `updateAutoFitScale()` if enabled
+- **Window Resize**: Debounced event listener calls `updateAutoFitScale()` via requestAnimationFrame
+- **Toggle Action**: `autoFitBtn` click handler toggles state and persists to localStorage
+
+### Background Positioning Strategy
+To support dynamic tile resizing:
+- **Old approach**: Fixed pixel values `backgroundPosition: '-192px -128px'`
+- **New approach**: CSS calc() expressions `backgroundPosition: 'calc(-3 * var(--tile)) calc(-2 * var(--tile))'`
+- **Benefits**: Backgrounds automatically scale when `--tile` variable changes
+- **Multi-image handling**: `getBackgroundPositionCalc()` correctly offsets tiles in horizontal/vertical boards
+
+### Mobile Compatibility
+- **Touch Controls**: Work correctly at all scales
+- **Coordinate Mapping**: Uses natural element dimensions (no transform-based scaling)
+- **Visual Alignment**: Board dimensions match interactive areas perfectly
+- **Responsive**: Updates dynamically when device is rotated or window resized
+
+### Performance Considerations
+- Disables transitions during resize operations to prevent visual glitches
+- Uses debounced resize events to avoid excessive recalculations
+- Double requestAnimationFrame ensures DOM layout is complete before measuring
+- Toolbar max-width updates synchronously with board width changes
 
 ## Dialogs
 

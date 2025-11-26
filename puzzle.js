@@ -82,13 +82,15 @@
   let boardConfig = defaultBoard;
   let currentBoardSlug = 'default';
   
-  let tilePx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tile')) || 64;
+  const baseTilePx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tile')) || 64;
+  let tilePx = baseTilePx;
   const boardEl = document.getElementById('board');
   const resetBtn = document.getElementById('resetBtn');
   const shuffleBtn = document.getElementById('shuffleBtn');
   const challengeBtn = document.getElementById('challengeBtn');
   const giveUpBtn = document.getElementById('giveUpBtn');
   const settingsBtn = document.getElementById('settingsBtn');
+  const autoFitBtn = document.getElementById('autoFitBtn');
   const settingsDialog = document.getElementById('settingsDialog');
   const settingsBoardSelect = document.getElementById('settingsBoardSelect');
   const settingsApplyBtn = document.getElementById('settingsApplyBtn');
@@ -159,6 +161,9 @@
   let timerElapsedTime = 0;
   let timerInterval = null;
   let timerPaused = false;
+  
+  // Auto-fit state
+  let autoFitEnabled = false;
 
   // Gap marker DOM (wrapper + inner gap element for each identity)
   const gapWrappers = [document.createElement('div'), document.createElement('div')];
@@ -222,6 +227,40 @@
     
     return { image, bgSize, bgPosX, bgPosY };
   }
+  
+  // Helper function to get background position as calc() expression
+  function getBackgroundPositionCalc(homeX, homeY) {
+    if (boardConfig.imageMode === 'single') {
+      // Simple case: just multiply home coordinates by --tile
+      return `calc(${-homeX} * var(--tile)) calc(${-homeY} * var(--tile))`;
+    } else if (boardConfig.imageMode === 'horizontal') {
+      const halfWidth = boardConfig.width / 2;
+      let xCalc;
+      if (homeX < halfWidth) {
+        // Left half: normal offset
+        xCalc = `calc(${-homeX} * var(--tile))`;
+      } else {
+        // Right half: subtract halfWidth to account for second image
+        xCalc = `calc(${-(homeX - halfWidth)} * var(--tile))`;
+      }
+      const yCalc = `calc(${-homeY} * var(--tile))`;
+      return `${xCalc} ${yCalc}`;
+    } else if (boardConfig.imageMode === 'vertical') {
+      const halfHeight = boardConfig.height / 2;
+      const xCalc = `calc(${-homeX} * var(--tile))`;
+      let yCalc;
+      if (homeY < halfHeight) {
+        // Top half: normal offset
+        yCalc = `calc(${-homeY} * var(--tile))`;
+      } else {
+        // Bottom half: subtract halfHeight to account for second image
+        yCalc = `calc(${-(homeY - halfHeight)} * var(--tile))`;
+      }
+      return `${xCalc} ${yCalc}`;
+    }
+    // Fallback
+    return `calc(${-homeX} * var(--tile)) calc(${-homeY} * var(--tile))`;
+  }
 
   function initTiles() {
     smallTiles = [];
@@ -244,10 +283,11 @@
       el.className = 'tile big';
       
       // Set background image and position based on tile's home position
-      const { image, bgSize, bgPosX, bgPosY } = getBackgroundStyleForTile(home.x, home.y);
+      const { image, bgSize } = getBackgroundStyleForTile(home.x, home.y);
       el.style.backgroundImage = `url("${image}")`;
       el.style.backgroundSize = bgSize;
-      el.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+      // Use calc() for position so it updates automatically when --tile changes
+      el.style.backgroundPosition = getBackgroundPositionCalc(home.x, home.y);
       
       boardEl.appendChild(el);
       const t = { id, x: home.x, y: home.y, homeX: home.x, homeY: home.y, el };
@@ -267,10 +307,11 @@
         el.className = 'tile small';
         
         // Set background image and position based on tile's home position
-        const { image, bgSize, bgPosX, bgPosY } = getBackgroundStyleForTile(x, y);
+        const { image, bgSize } = getBackgroundStyleForTile(x, y);
         el.style.backgroundImage = `url("${image}")`;
         el.style.backgroundSize = bgSize;
-        el.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+        // Use calc() for position so it updates automatically when --tile changes
+        el.style.backgroundPosition = getBackgroundPositionCalc(x, y);
         
         boardEl.appendChild(el);
         const t = { id, x, y, homeX: x, homeY: y, el };
@@ -310,12 +351,27 @@
     boardConfig = boardRegistry[boardSlug];
     currentBoardSlug = boardSlug;
     
+    // Update toolbar max-width to match new board width
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+      toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
+    }
+    
     // Update board dimensions
     boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
     boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
     
     // Reset the puzzle with new board
     resetState();
+    
+    // Update auto-fit scale if enabled
+    if (autoFitEnabled) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          updateAutoFitScale();
+        });
+      });
+    }
   }
 
   function resetState() {
@@ -333,10 +389,11 @@
     }));
     // Fix their background cropping based on home, once
     gapEls.forEach((el, i) => {
-      const { image, bgSize, bgPosX, bgPosY } = getBackgroundStyleForTile(gaps[i].homeX, gaps[i].homeY);
+      const { image, bgSize } = getBackgroundStyleForTile(gaps[i].homeX, gaps[i].homeY);
       el.style.backgroundImage = `url("${image}")`;
       el.style.backgroundSize = bgSize;
-      el.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+      // Use calc() for position so it updates automatically when --tile changes
+      el.style.backgroundPosition = getBackgroundPositionCalc(gaps[i].homeX, gaps[i].homeY);
     });
 
     selectedGapIdx = 0;
@@ -1058,16 +1115,30 @@
   let lastDragGapPos = null; // Track last gap position we dragged over to prevent repeated moves
   let dragControlUsed = false; // Flag to disable swipe controls after drag control is used
 
-  boardEl.addEventListener('mousedown', (e) => {
-    // Prevent mousedown if challenge is solved
+  // Helper function to get position from either mouse or touch event
+  function getEventPosition(e) {
+    if (e.touches && e.touches.length > 0) {
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    } else {
+      return { x: e.clientX, y: e.clientY };
+    }
+  }
+
+  function handlePointerStart(e) {
+    // Prevent pointer start if challenge is solved
     if (gameMode === 'challenge' && challengeSolved) {
       return;
     }
 
+    // Get pointer position
+    const pos = getEventPosition(e);
+    
     // Get mouse position relative to board
     const rect = boardEl.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+    const clickX = pos.x - rect.left;
+    const clickY = pos.y - rect.top;
     
     // Convert to grid coordinates
     const gridX = Math.floor(clickX / tilePx);
@@ -1078,11 +1149,11 @@
       return;
     }
 
-    // Store mouse down position and time
-    mouseDownPos = { x: e.clientX, y: e.clientY };
+    // Store pointer down position and time
+    mouseDownPos = { x: pos.x, y: pos.y };
     mouseDownTime = Date.now();
     mouseDownGridPos = { x: gridX, y: gridY };
-    mouseDownSelectedGapIdx = selectedGapIdx; // Store which gap was selected before this mousedown
+    mouseDownSelectedGapIdx = selectedGapIdx; // Store which gap was selected before this pointer down
     lastDragGapPos = null; // Reset drag tracking for new drag session
     dragControlUsed = false; // Reset drag control flag for new drag session
     
@@ -1092,23 +1163,37 @@
       selectedGapIdx = clickedGapIdx;
       renderGaps();
     }
-  });
+  }
 
-  boardEl.addEventListener('mousemove', (e) => {
+  boardEl.addEventListener('mousedown', (e) => {
+    handlePointerStart(e);
+  });
+  
+  boardEl.addEventListener('touchstart', (e) => {
+    // Prevent scrolling on touch devices
+    e.preventDefault();
+    handlePointerStart(e.touches[0]);
+  }, { passive: false });
+
+  // Unified pointer move handler for both mouse and touch events
+  function handlePointerMove(e) {
     // Only process if we have a valid mousedown
     if (!mouseDownPos || !mouseDownTime || !mouseDownGridPos) {
       return;
     }
 
-    // Prevent mousemove if challenge is solved
+    // Prevent move if challenge is solved
     if (gameMode === 'challenge' && challengeSolved) {
       return;
     }
 
-    // Get current mouse position relative to board
+    // Get current pointer position
+    const pos = getEventPosition(e);
+    
+    // Get position relative to board
     const rect = boardEl.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
+    const currentX = pos.x - rect.left;
+    const currentY = pos.y - rect.top;
     
     // Convert to grid coordinates
     const currentGridX = Math.floor(currentX / tilePx);
@@ -1280,7 +1365,7 @@
     // Only process swipe controls if drag control hasn't been used
     if (!dragControlUsed) {
       const SWIPE_THRESHOLD = 5;
-      const swipeDir = detectSwipeDirection(mouseDownPos, {x: e.clientX, y: e.clientY}, SWIPE_THRESHOLD);
+      const swipeDir = detectSwipeDirection(mouseDownPos, pos, SWIPE_THRESHOLD);
 
       if (swipeDir) {
         const gridX = mouseDownGridPos.x;
@@ -1392,10 +1477,21 @@
         }
       }
     }
-  });
+  }
 
-  document.addEventListener('mouseup', (e) => {
-    // Prevent mouseup if challenge is solved
+  boardEl.addEventListener('mousemove', handlePointerMove);
+  
+  boardEl.addEventListener('touchmove', (e) => {
+    // Prevent scrolling during touch move
+    if (mouseDownPos) {
+      e.preventDefault();
+    }
+    handlePointerMove(e);
+  }, { passive: false });
+
+  // Unified pointer end handler for both mouse and touch events
+  function handlePointerEnd(e) {
+    // Prevent pointer end if challenge is solved
     if (gameMode === 'challenge' && challengeSolved) {
       mouseDownPos = null;
       mouseDownTime = null;
@@ -1406,7 +1502,7 @@
       return;
     }
 
-    // Check if we have a valid mousedown
+    // Check if we have a valid pointer down
     if (!mouseDownPos || !mouseDownTime || !mouseDownGridPos) {
       return;
     }
@@ -1421,7 +1517,7 @@
 
     // If drag control was used, skip all click/swipe logic
     if (dragControlUsed) {
-      // Reset mouse tracking
+      // Reset tracking
       mouseDownPos = null;
       mouseDownTime = null;
       mouseDownGridPos = null;
@@ -1431,9 +1527,12 @@
       return;
     }
 
+    // Get pointer position
+    const pos = getEventPosition(e);
+    
     // Only process swipe/click logic if drag control wasn't used
     const SWIPE_THRESHOLD = 5;
-    const swipeDir = detectSwipeDirection(mouseDownPos, {x: e.clientX, y: e.clientY}, SWIPE_THRESHOLD);
+    const swipeDir = detectSwipeDirection(mouseDownPos, pos, SWIPE_THRESHOLD);
 
     // Use the original grid position from mousedown for determining the clicked cell
     const gridX = mouseDownGridPos.x;
@@ -1445,7 +1544,7 @@
     // Store whether this gap was already selected BEFORE mousedown changed it
     const wasAlreadySelected = (mouseDownSelectedGapIdx === clickedGapIdx);
     
-    // Reset mouse tracking
+    // Reset tracking
     mouseDownPos = null;
     mouseDownTime = null;
     mouseDownGridPos = null;
@@ -1606,6 +1705,29 @@
     if (dir) {
       tryMove(dir);
     }
+  }
+
+  document.addEventListener('mouseup', handlePointerEnd);
+  
+  document.addEventListener('touchend', (e) => {
+    handlePointerEnd(e);
+  });
+  
+  document.addEventListener('touchcancel', (e) => {
+    // Touch was cancelled (e.g., system gesture) - clean up state
+    if (swipePreviewActive && swipePreviewTile) {
+      swipePreviewTile.el.style.transform = '';
+      swipePreviewActive = false;
+      swipePreviewTile = null;
+      swipePreviewOffset = { x: 0, y: 0 };
+    }
+    
+    mouseDownPos = null;
+    mouseDownTime = null;
+    mouseDownGridPos = null;
+    mouseDownSelectedGapIdx = null;
+    lastDragGapPos = null;
+    dragControlUsed = false;
   });
 
   resetBtn.addEventListener('click', () => {
@@ -1770,9 +1892,112 @@
     localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
   });
 
+  // Auto-fit toggle handler
+  autoFitBtn.addEventListener('click', () => {
+    autoFitEnabled = !autoFitEnabled;
+    applyAutoFit();
+    localStorage.setItem('autoFit', autoFitEnabled ? 'enabled' : 'disabled');
+  });
+  
+  // Function to apply or remove auto-fit scaling
+  function applyAutoFit() {
+    if (autoFitEnabled) {
+      document.body.classList.add('auto-fit');
+      // Use requestAnimationFrame to ensure layout is complete before measuring
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          updateAutoFitScale();
+        });
+      });
+    } else {
+      document.body.classList.remove('auto-fit');
+      // Reset to base tile size
+      document.documentElement.style.setProperty('--tile', `${baseTilePx}px`);
+      tilePx = baseTilePx;
+      // Update toolbar max-width
+      const toolbar = document.querySelector('.toolbar');
+      if (toolbar) {
+        toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
+      }
+      // Update board dimensions
+      boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
+      boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
+      // Re-render to update positions
+      renderAll();
+    }
+  }
+  
+  // Function to calculate and apply scaling
+  function updateAutoFitScale() {
+    if (!autoFitEnabled) {
+      return;
+    }
+    
+    // Disable transitions during resize to prevent timing issues
+    boardEl.classList.add('no-transitions');
+    
+    // Get viewport width FIRST
+    const viewportWidth = window.innerWidth;
+    const padding = 40; // Account for body margins
+    
+    // Calculate what the board width WOULD BE at base tile size
+    const baseboardWidthPx = boardConfig.width * baseTilePx;
+    
+    // Determine what tile size we need
+    let targetTilePx;
+    if (baseboardWidthPx + padding > viewportWidth) {
+      // Calculate new tile size to fit viewport
+      targetTilePx = Math.floor((viewportWidth - padding) / boardConfig.width);
+    } else {
+      // Board fits naturally, use base tile size
+      targetTilePx = baseTilePx;
+    }
+    
+    // Apply the changes
+    document.documentElement.style.setProperty('--tile', `${targetTilePx}px`);
+    tilePx = targetTilePx;
+    
+    // Update toolbar max-width to match board
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+      toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
+    }
+    
+    // Update board dimensions
+    boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
+    boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
+    
+    // Re-render to update tile positions
+    renderAll();
+    
+    // Re-enable transitions after a brief delay
+    setTimeout(() => {
+      boardEl.classList.remove('no-transitions');
+    }, 50);
+  }
+  
+  // Update scale when window is resized
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    if (autoFitEnabled) {
+      // Debounce resize events with requestAnimationFrame
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        requestAnimationFrame(() => {
+          updateAutoFitScale();
+        });
+      }, 50);
+    }
+  });
+  
   // Load saved theme preference
   if (localStorage.getItem('darkMode') === 'enabled') {
     document.body.classList.add('dark-mode');
+  }
+  
+  // Load saved auto-fit preference (will be applied after initialization)
+  if (localStorage.getItem('autoFit') === 'enabled') {
+    autoFitEnabled = true;
   }
 
   // Help dialog handlers
@@ -1838,7 +2063,25 @@
   }
 
   // Initialize
-  // Set initial board dimensions
+  // If auto-fit is enabled, calculate tile size BEFORE initializing board
+  if (autoFitEnabled) {
+    document.body.classList.add('auto-fit');
+    const viewportWidth = window.innerWidth;
+    const padding = 40;
+    const baseboardWidthPx = boardConfig.width * baseTilePx;
+    
+    if (baseboardWidthPx + padding > viewportWidth) {
+      const newTilePx = Math.floor((viewportWidth - padding) / boardConfig.width);
+      document.documentElement.style.setProperty('--tile', `${newTilePx}px`);
+      tilePx = newTilePx;
+    }
+  }
+  
+  // Set initial board and toolbar dimensions
+  const toolbar = document.querySelector('.toolbar');
+  if (toolbar) {
+    toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
+  }
   boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
   boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
   

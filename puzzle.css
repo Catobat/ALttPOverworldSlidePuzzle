@@ -6,7 +6,7 @@ body { font-family: system-ui, Arial, sans-serif; margin: 20px; color: #222; }
   align-items: center;
   margin-bottom: 10px;
   flex-wrap: wrap;
-  max-width: calc(8 * var(--tile));
+  /* max-width is set dynamically via JS based on board width */
 }
 .toolbar-left {
   display: flex;
@@ -512,4 +512,28 @@ body.dark-mode .kbd {
   background: #1a1a1a;
   border-color: #555;
   color: #e0e0e0;
+}
+
+/* Auto-fit mode: scale board to fit screen width */
+body.auto-fit {
+  overflow-x: hidden;
+}
+
+body.auto-fit .toolbar,
+body.auto-fit .game-container {
+  transform-origin: top left;
+}
+
+@media (max-width: 768px) {
+  body.auto-fit .toolbar {
+    max-width: 100vw;
+  }
+  
+  body.auto-fit #board {
+    /* Board will be scaled via JavaScript based on viewport */
+  }
+  
+  body.auto-fit .game-container {
+    /* Container will be scaled via JavaScript */
+  }
 }
