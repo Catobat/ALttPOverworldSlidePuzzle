@@ -114,11 +114,10 @@ const boardConfig = {
 - **Reset Button**: Return to solved state (Free Play) or recreate challenge (Challenge Mode)
 - **Shuffle Button**: Randomize board with 250 valid moves (Free Play only)
 - **Settings Button** (⚙): Change board size with reset warning (Free Play only)
-- **Auto-Fit Toggle** (⊡): Enable/disable automatic board resizing for mobile devices
+- **Display Button** (☀): Opens display settings dialog for theme, auto-scaling, and board size
 - **New Challenge Button**: Start a new challenge with custom or random seed and board selection
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
 - **Help Button** (?): Opens controls reference dialog
-- **Theme Toggle** (☀): Switch between light and dark modes
 
 ### Movement Rules
 1. **Small Pieces (1×1)**: Can move into any adjacent gap
@@ -150,9 +149,8 @@ The toolbar uses flexbox layout with two groups:
   - Give Up button (shown only in Challenge Mode)
 - **`.toolbar-right`**: Right-aligned button group containing:
   - Settings button (⚙) - Opens board selection dialog (hidden in Challenge Mode)
-  - Auto-fit button (⊡) - Toggles automatic board resizing
+  - Display button (☀) - Opens display settings dialog
   - Help button (?) - Opens controls reference dialog
-  - Theme toggle button (☀) - Toggles dark mode theme
   
 This structure ensures the right buttons stay aligned with the puzzle width rather than extending to the window edge.
 
@@ -679,12 +677,48 @@ Challenge Mode includes automatic win detection:
 - Touch events: Mouse click events work on touch devices
 - Uses `will-change` CSS property for performance
 
-## Dark Mode
+## Display Settings
 
-The game includes a dark mode theme that can be toggled by clicking the sun icon (☀) in the toolbar:
+The game includes a unified display settings dialog accessed via the sun icon (☀) in the toolbar:
 
-- **Theme Toggle Button**: Sun icon (☀) in right toolbar group
-- **Persistence**: Theme preference saved to localStorage and restored on page load
+### Display Settings Dialog
+- **Display Button**: Sun icon (☀) in right toolbar group
+- **Settings Include**:
+  - **Dark theme**: Checkbox to toggle between light and dark modes
+  - **Challenge box above board**: Checkbox to position challenge info box above the board instead of to the right
+  - **Auto-scale to fit screen**: Checkbox to enable automatic board resizing for mobile devices
+  - **Board size**: Slider to manually adjust board size from 50% to 200% (disabled when auto-scale is enabled)
+- **Instant Application**: All settings apply immediately without requiring confirmation
+- **Persistence**: All preferences saved to localStorage and restored on page load
+
+### Challenge Box Position
+- **Default Position**: Challenge info box appears to the right of the puzzle board
+- **Above Board Position**: When enabled via Display Settings, challenge box moves above the board
+- **Layout Changes**:
+  - **Right Side (default)**: Vertical layout with full info display
+    - Title at top
+    - Seed and steps on separate rows
+    - Move count and timer in columns below with large values
+    - Min-width of 220px to prevent layout shifts
+  - **Above Board**: Horizontal compact layout
+    - Uses CSS `order: -1` to position above board
+    - All information arranged in a single row
+    - Title, seed, and steps appear on the left
+    - Move count and timer on the right
+    - Smaller fonts for compact display
+    - Width constrained to content (uses `width: auto` and `align-self: flex-start`)
+- **Benefits of Above Board**:
+  - Board can use full window width
+  - Particularly useful for larger boards (Horizontal 16×8, Vertical 8×16)
+  - Better for mobile/narrow viewports
+  - Reduces horizontal scrolling on small screens
+- **CSS Implementation**:
+  - Controlled by `body.challenge-above` class
+  - Game container switches from row to column layout via flexbox
+  - Challenge info rows display inline with spacing
+  - Stats group changes from vertical to horizontal with baseline alignment
+
+### Dark Mode
 - **Implementation**: Adds/removes `dark-mode` class on body element
 - **Styling**: Dark mode styles defined in `puzzle.css`
   - Background: #1a1a1a (dark)
@@ -696,42 +730,55 @@ The game includes a dark mode theme that can be toggled by clicking the sun icon
   - Primary buttons: Adjusted blue tones for dark mode
   - All UI elements styled for consistency in dark mode
 
-## Auto-Fit Mode
-
-The game includes an auto-fit feature that automatically resizes the board to fit mobile devices and smaller screens:
-
-### Basic Usage
-- **Toggle Button**: Square icon (⊡) in right toolbar group
+### Auto-Scale Mode
 - **Default State**: Off by default
-- **Activation**: Click the ⊡ button to enable/disable
-- **Persistence**: Preference saved to localStorage and restored on page load
-
-### How It Works
-- **Dynamic Tile Sizing**: When enabled, adjusts the `--tile` CSS variable to fit the viewport
-- **Calculation**: `newTileSize = (viewportWidth - 40px) / boardConfig.width`
+- **How It Works**: When enabled, adjusts the `--tile` CSS variable to fit the viewport
+- **Calculation**: `newTileSize = (viewportWidth - 40px - challengeBoxSpace) / boardConfig.width`
   - 40px padding accounts for body margins
+  - `challengeBoxSpace` accounts for challenge info box width when positioned to the right (274px total)
   - Tile size rounds down to nearest pixel
-- **Responsive**: Updates automatically when window is resized
+- **Iterative Sizing**: Uses an iterative approach for non-resize events to ensure proper sizing
+  - Repeatedly applies scaling and checks if board width changed
+  - Continues until board size stabilizes or max iterations reached (20)
+  - Each iteration waits for DOM to settle (double RAF + 10ms delay)
+  - Only used for setting changes and board switches, not window resize
+- **Responsive**: Updates automatically when window is resized (single-pass for performance)
 - **Board-Aware**: Recalculates when switching between board sizes (Default 8×8, Horizontal 16×8, Vertical 8×16)
+- **Mode-Aware**: Recalculates when switching between Free Play and Challenge Mode (challenge box affects available space)
+- **Layout-Aware**: Recalculates when changing challenge box position (above vs right side)
+
+### Manual Board Size
+- **Range**: 50% to 200% in 10% increments
+- **Default**: 100% (64px tiles)
+- **Behavior**: Disabled when auto-scale is enabled
+- **Implementation**: Scales the base tile size by the selected percentage
 
 ### Implementation Details
 
 #### State Variables
 ```javascript
 baseTilePx        // Constant: original tile size (64px)
-tilePx            // Variable: current tile size (changes with auto-fit)
-autoFitEnabled    // Boolean: whether auto-fit is active
+tilePx            // Variable: current tile size (changes with settings)
+autoFitEnabled    // Boolean: whether auto-scale is active
+boardSizeScale    // Number: manual board size percentage (50-200)
 ```
 
 #### Key Functions
-- `applyAutoFit()`: Toggles auto-fit mode on/off
+- `applyBoardSize()`: Applies either auto-scale or manual board size
   - Adds/removes `auto-fit` class on body element
-  - Calls `updateAutoFitScale()` when enabling (with double requestAnimationFrame for timing)
-  - Resets to base tile size when disabling
-  - Updates toolbar max-width and board dimensions
+  - **Auto-scale enabled**: Uses iterative approach to ensure proper sizing
+    - Repeats `updateAutoFitScale()` up to 20 times
+    - Checks board width after each iteration
+    - Stops when board size stabilizes (no change between iterations)
+    - Each iteration scheduled via `requestAnimationFrame` + 10ms delay
+    - Ensures board is properly sized even when DOM hasn't fully settled
+  - **Manual scale**: Applies percentage-based scaling
+    - Updates toolbar max-width and board dimensions
+    - Calls `renderAll()` to update tile positions
   
-- `updateAutoFitScale()`: Calculates and applies responsive sizing
+- `updateAutoFitScale()`: Calculates and applies responsive sizing (single pass)
   - Measures viewport width
+  - Accounts for challenge box space when positioned to the right
   - Compares against board width at base tile size
   - If board is too wide: calculates new tile size, updates CSS variable, updates `tilePx`
   - If board fits naturally: resets to base tile size
@@ -743,21 +790,24 @@ autoFitEnabled    // Boolean: whether auto-fit is active
 - `getBackgroundPositionCalc(homeX, homeY)`: Generates CSS calc() expressions for background positioning
   - Returns calc() expressions that reference `var(--tile)`
   - Backgrounds automatically adjust when `--tile` changes
-  - **Single mode**: Simple offset multiplication: `calc(-homeX * var(--tile))`
+  - **Single mode**: Simple offset multiplication
   - **Horizontal mode**: Adjusts X offset for right half tiles (subtracts halfWidth)
   - **Vertical mode**: Adjusts Y offset for bottom half tiles (subtracts halfHeight)
   - Used by `initTiles()` and `resetState()` to set tile/gap backgrounds
 
-#### Integration Points
-- **Initialization**: Applied before `resetState()` if enabled from localStorage
-- **Board Switching**: `switchBoard()` updates toolbar max-width and calls `updateAutoFitScale()` if enabled
-- **Window Resize**: Debounced event listener calls `updateAutoFitScale()` via requestAnimationFrame
-- **Toggle Action**: `autoFitBtn` click handler toggles state and persists to localStorage
+#### Integration Points (Auto-Fit Triggers)
+When auto-scale is enabled, `applyBoardSize()` is called in these scenarios:
+- **Initialization**: Applied on page load after preferences are loaded
+- **Auto-scale toggle**: When enabling/disabling auto-scale in display settings
+- **Board switching**: When changing board layout (Default/Horizontal/Vertical)
+- **Board size slider**: When manually adjusting board size (only if auto-scale is disabled)
+- **Challenge box position**: When toggling challenge box position (above vs right side)
+- **Game mode changes**: When switching between Free Play and Challenge Mode
+- **Window resize**: Uses single-pass `updateAutoFitScale()` (debounced, no iteration for performance)
 
 ### Background Positioning Strategy
 To support dynamic tile resizing:
-- **Old approach**: Fixed pixel values `backgroundPosition: '-192px -128px'`
-- **New approach**: CSS calc() expressions `backgroundPosition: 'calc(-3 * var(--tile)) calc(-2 * var(--tile))'`
+- **Approach**: CSS calc() expressions
 - **Benefits**: Backgrounds automatically scale when `--tile` variable changes
 - **Multi-image handling**: `getBackgroundPositionCalc()` correctly offsets tiles in horizontal/vertical boards
 
@@ -827,10 +877,22 @@ All dialogs support the following dismissal methods:
 - Generates random seed (0 to 2^32-1) if field is empty
 - Only accepts numeric seeds for deterministic LCG behavior
 
+### Display Settings Dialog
+- Opened by "Display" button (☀) in toolbar
+- Contains:
+  - Dark theme checkbox - Toggles dark mode instantly
+  - Auto-scale checkbox - Enables automatic board resizing, disables size slider when active
+  - Board size slider - Adjusts board size from 50% to 200% (disabled when auto-scale is enabled)
+  - Close button
+- All settings apply instantly (no confirmation needed)
+- Escape key closes dialog
+- Click outside dialog to close
+- Returns focus to board when closed
+
 ### Congratulations Dialog
 - Appears when challenge is solved
 - Shows after 100ms delay (allows animation to complete)
-- Displays move count
+- Displays move count and time
 - Contains OK button
 - Enter/Escape keys close dialog
 - Click outside dialog to close

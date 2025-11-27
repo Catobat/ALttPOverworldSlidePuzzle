@@ -16,9 +16,8 @@
     </div>
     <div class="toolbar-right">
       <button id="settingsBtn" class="btn btn-icon" aria-label="Settings" title="Settings" style="display: inline-block;">⚙</button>
-      <button id="autoFitBtn" class="btn btn-icon" aria-label="Toggle auto-fit" title="Auto-fit to screen">⊡</button>
+      <button id="displayBtn" class="btn btn-icon" aria-label="Display settings" title="Display settings">☀</button>
       <button id="helpBtn" class="btn btn-icon" aria-label="Help" title="Show controls">?</button>
-      <button id="themeToggleBtn" class="btn btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">☀</button>
     </div>
   </div>
   <div class="game-container">
@@ -96,6 +95,40 @@
       <div class="dialog-buttons">
         <button id="settingsApplyBtn" class="btn btn-primary">Apply</button>
         <button id="settingsCancelBtn" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Display Settings Dialog -->
+  <div id="displayDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog">
+      <h2>Display Settings</h2>
+      <div class="dialog-content">
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="darkModeCheckbox" />
+            <span>Dark theme</span>
+          </label>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="challengeAboveCheckbox" />
+            <span>Challenge box above board</span>
+          </label>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="autoScaleCheckbox" />
+            <span>Auto-scale to fit screen</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label for="boardSizeSlider">Board size: <span id="boardSizeValue">100%</span></label>
+          <input type="range" id="boardSizeSlider" min="50" max="200" step="10" value="100" />
+        </div>
+      </div>
+      <div class="dialog-buttons">
+        <button id="displayCloseBtn" class="btn btn-primary">Close</button>
       </div>
     </div>
   </div>

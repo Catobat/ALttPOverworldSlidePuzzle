@@ -90,11 +90,18 @@
   const challengeBtn = document.getElementById('challengeBtn');
   const giveUpBtn = document.getElementById('giveUpBtn');
   const settingsBtn = document.getElementById('settingsBtn');
-  const autoFitBtn = document.getElementById('autoFitBtn');
+  const displayBtn = document.getElementById('displayBtn');
   const settingsDialog = document.getElementById('settingsDialog');
   const settingsBoardSelect = document.getElementById('settingsBoardSelect');
   const settingsApplyBtn = document.getElementById('settingsApplyBtn');
   const settingsCancelBtn = document.getElementById('settingsCancelBtn');
+  const displayDialog = document.getElementById('displayDialog');
+  const darkModeCheckbox = document.getElementById('darkModeCheckbox');
+  const autoScaleCheckbox = document.getElementById('autoScaleCheckbox');
+  const challengeAboveCheckbox = document.getElementById('challengeAboveCheckbox');
+  const boardSizeSlider = document.getElementById('boardSizeSlider');
+  const boardSizeValue = document.getElementById('boardSizeValue');
+  const displayCloseBtn = document.getElementById('displayCloseBtn');
   const challengeDialog = document.getElementById('challengeDialog');
   const challengeBoardSelect = document.getElementById('challengeBoardSelect');
   const challengeStartBtn = document.getElementById('challengeStartBtn');
@@ -109,7 +116,6 @@
   const congratsDialog = document.getElementById('congratsDialog');
   const congratsMessage = document.getElementById('congratsMessage');
   const congratsOkBtn = document.getElementById('congratsOkBtn');
-  const themeToggleBtn = document.getElementById('themeToggleBtn');
   const helpBtn = document.getElementById('helpBtn');
   const helpDialog = document.getElementById('helpDialog');
   const helpCloseBtn = document.getElementById('helpCloseBtn');
@@ -162,8 +168,10 @@
   let timerInterval = null;
   let timerPaused = false;
   
-  // Auto-fit state
+  // Display settings state
   let autoFitEnabled = false;
+  let boardSizeScale = 100; // Board size percentage (50-200%)
+  let challengeAbove = false; // Challenge box position: false = right side, true = above board
 
   // Gap marker DOM (wrapper + inner gap element for each identity)
   const gapWrappers = [document.createElement('div'), document.createElement('div')];
@@ -364,14 +372,8 @@
     // Reset the puzzle with new board
     resetState();
     
-    // Update auto-fit scale if enabled
-    if (autoFitEnabled) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          updateAutoFitScale();
-        });
-      });
-    }
+    // Apply board size (handles both auto-fit and manual scaling)
+    applyBoardSize();
   }
 
   function resetState() {
@@ -542,6 +544,11 @@
     updateURL(); // Update URL when switching to Free Play
     renderGaps(); // Restore gap highlighting for Free Play mode
     // Don't reset the board - keep current state
+    
+    // Reapply board size since challenge box appearance affects available space
+    if (autoFitEnabled) {
+      applyBoardSize();
+    }
   }
 
   async function startChallenge(seed, steps, boardSlug = null) {
@@ -562,6 +569,11 @@
     
     updateUIForMode();
     updateURL(); // Update URL when starting challenge
+    
+    // Reapply board size since challenge box appearance affects available space
+    if (autoFitEnabled) {
+      applyBoardSize();
+    }
     
     // Reset to solved state first
     resetState();
@@ -1885,35 +1897,116 @@
     }
   });
 
-  // Theme toggle handler
-  themeToggleBtn.addEventListener('click', () => {
-    document.body.classList.toggle('dark-mode');
-    const isDarkMode = document.body.classList.contains('dark-mode');
+  // Display settings dialog handlers
+  displayBtn.addEventListener('click', () => {
+    // Set current values in dialog
+    darkModeCheckbox.checked = document.body.classList.contains('dark-mode');
+    autoScaleCheckbox.checked = autoFitEnabled;
+    challengeAboveCheckbox.checked = challengeAbove;
+    boardSizeSlider.value = boardSizeScale;
+    boardSizeValue.textContent = `${boardSizeScale}%`;
+    boardSizeSlider.disabled = autoFitEnabled;
+    
+    displayDialog.style.display = 'flex';
+    darkModeCheckbox.focus();
+  });
+
+  displayCloseBtn.addEventListener('click', () => {
+    displayDialog.style.display = 'none';
+    boardEl.focus();
+  });
+
+  // Dark mode checkbox handler - applies instantly
+  darkModeCheckbox.addEventListener('change', () => {
+    const isDarkMode = darkModeCheckbox.checked;
+    document.body.classList.toggle('dark-mode', isDarkMode);
     localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
   });
 
-  // Auto-fit toggle handler
-  autoFitBtn.addEventListener('click', () => {
-    autoFitEnabled = !autoFitEnabled;
-    applyAutoFit();
+  // Auto-scale checkbox handler - applies instantly
+  autoScaleCheckbox.addEventListener('change', () => {
+    autoFitEnabled = autoScaleCheckbox.checked;
+    boardSizeSlider.disabled = autoFitEnabled;
+    applyBoardSize();
     localStorage.setItem('autoFit', autoFitEnabled ? 'enabled' : 'disabled');
   });
+
+  // Challenge box position checkbox handler - applies instantly
+  challengeAboveCheckbox.addEventListener('change', () => {
+    challengeAbove = challengeAboveCheckbox.checked;
+    document.body.classList.toggle('challenge-above', challengeAbove);
+    localStorage.setItem('challengeAbove', challengeAbove ? 'enabled' : 'disabled');
+    // Reapply board size since challenge box position affects available space
+    if (autoFitEnabled) {
+      applyBoardSize();
+    }
+  });
+
+  // Board size slider handler - applies instantly
+  boardSizeSlider.addEventListener('input', () => {
+    boardSizeScale = parseInt(boardSizeSlider.value);
+    boardSizeValue.textContent = `${boardSizeScale}%`;
+    if (!autoFitEnabled) {
+      applyBoardSize();
+    }
+  });
+
+  // Save board size when slider change is complete
+  boardSizeSlider.addEventListener('change', () => {
+    localStorage.setItem('boardSize', boardSizeScale.toString());
+  });
+
+  // Allow Escape to close display dialog
+  displayDialog.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      displayCloseBtn.click();
+    }
+  });
+
+  // Close display dialog when clicking outside
+  displayDialog.addEventListener('mousedown', (e) => {
+    if (e.target === displayDialog) {
+      displayCloseBtn.click();
+    }
+  });
   
-  // Function to apply or remove auto-fit scaling
-  function applyAutoFit() {
+  // Function to apply board size (either auto-fit or manual scale)
+  // Uses iterative approach for board size changes to ensure proper sizing
+  function applyBoardSize() {
     if (autoFitEnabled) {
       document.body.classList.add('auto-fit');
-      // Use requestAnimationFrame to ensure layout is complete before measuring
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          updateAutoFitScale();
-        });
-      });
+      // Use iterative approach to ensure board is properly sized
+      // Repeat until board size stabilizes (max 20 iterations)
+      let iteration = 0;
+      let lastBoardWidth = 0;
+      
+      const applyIteration = () => {
+        // Apply scaling
+        updateAutoFitScale();
+        
+        // Check if we should continue iterating
+        const newBoardWidth = boardEl.offsetWidth;
+        
+        if (iteration < 20) {
+          lastBoardWidth = newBoardWidth;
+          iteration++;
+          // Schedule next iteration after DOM settles
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setTimeout(applyIteration, 10);
+            });
+          });
+        }
+      };
+      
+      applyIteration();
     } else {
       document.body.classList.remove('auto-fit');
-      // Reset to base tile size
-      document.documentElement.style.setProperty('--tile', `${baseTilePx}px`);
-      tilePx = baseTilePx;
+      // Apply manual board size scale
+      const scaledTilePx = Math.floor(baseTilePx * (boardSizeScale / 100));
+      document.documentElement.style.setProperty('--tile', `${scaledTilePx}px`);
+      tilePx = scaledTilePx;
       // Update toolbar max-width
       const toolbar = document.querySelector('.toolbar');
       if (toolbar) {
@@ -1940,14 +2033,25 @@
     const viewportWidth = window.innerWidth;
     const padding = 40; // Account for body margins
     
+    // Calculate additional space needed for challenge box if it's to the right of the board
+    let challengeBoxSpace = 0;
+    if (gameMode === 'challenge' && !challengeAbove) {
+      // Challenge box is to the right: account for gap + full challenge box width
+      const gap = 20; // gap between board and challenge box (from CSS .game-container)
+      const challengeBoxMinWidth = 220; // min-width from CSS .challenge-info
+      const challengeBoxPadding = 32; // padding: 16px on each side (from CSS .challenge-info)
+      const challengeBoxBorder = 2; // border: 1px on each side (from CSS .challenge-info)
+      challengeBoxSpace = gap + challengeBoxMinWidth + challengeBoxPadding + challengeBoxBorder;
+    }
+    
     // Calculate what the board width WOULD BE at base tile size
     const baseboardWidthPx = boardConfig.width * baseTilePx;
     
     // Determine what tile size we need
     let targetTilePx;
-    if (baseboardWidthPx + padding > viewportWidth) {
+    if (baseboardWidthPx + padding + challengeBoxSpace > viewportWidth) {
       // Calculate new tile size to fit viewport
-      targetTilePx = Math.floor((viewportWidth - padding) / boardConfig.width);
+      targetTilePx = Math.floor((viewportWidth - padding - challengeBoxSpace) / boardConfig.width);
     } else {
       // Board fits naturally, use base tile size
       targetTilePx = baseTilePx;
@@ -1986,18 +2090,27 @@
         requestAnimationFrame(() => {
           updateAutoFitScale();
         });
-      }, 50);
+      }, 10);
     }
   });
   
-  // Load saved theme preference
+  // Load saved preferences
   if (localStorage.getItem('darkMode') === 'enabled') {
     document.body.classList.add('dark-mode');
   }
   
-  // Load saved auto-fit preference (will be applied after initialization)
   if (localStorage.getItem('autoFit') === 'enabled') {
     autoFitEnabled = true;
+  }
+  
+  if (localStorage.getItem('challengeAbove') === 'enabled') {
+    challengeAbove = true;
+    document.body.classList.add('challenge-above');
+  }
+  
+  const savedBoardSize = localStorage.getItem('boardSize');
+  if (savedBoardSize) {
+    boardSizeScale = parseInt(savedBoardSize);
   }
 
   // Help dialog handlers
@@ -2063,20 +2176,6 @@
   }
 
   // Initialize
-  // If auto-fit is enabled, calculate tile size BEFORE initializing board
-  if (autoFitEnabled) {
-    document.body.classList.add('auto-fit');
-    const viewportWidth = window.innerWidth;
-    const padding = 40;
-    const baseboardWidthPx = boardConfig.width * baseTilePx;
-    
-    if (baseboardWidthPx + padding > viewportWidth) {
-      const newTilePx = Math.floor((viewportWidth - padding) / boardConfig.width);
-      document.documentElement.style.setProperty('--tile', `${newTilePx}px`);
-      tilePx = newTilePx;
-    }
-  }
-  
   // Set initial board and toolbar dimensions
   const toolbar = document.querySelector('.toolbar');
   if (toolbar) {
@@ -2084,6 +2183,9 @@
   }
   boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
   boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
+  
+  // Apply board size after preferences are loaded (handles both auto-fit and manual scaling)
+  applyBoardSize();
   
   resetState();
   boardEl.focus();
