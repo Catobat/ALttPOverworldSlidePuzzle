@@ -359,12 +359,6 @@
     boardConfig = boardRegistry[boardSlug];
     currentBoardSlug = boardSlug;
     
-    // Update toolbar max-width to match new board width
-    const toolbar = document.querySelector('.toolbar');
-    if (toolbar) {
-      toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
-    }
-    
     // Update board dimensions
     boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
     boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
@@ -2007,11 +2001,6 @@
       const scaledTilePx = Math.floor(baseTilePx * (boardSizeScale / 100));
       document.documentElement.style.setProperty('--tile', `${scaledTilePx}px`);
       tilePx = scaledTilePx;
-      // Update toolbar max-width
-      const toolbar = document.querySelector('.toolbar');
-      if (toolbar) {
-        toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
-      }
       // Update board dimensions
       boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
       boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
@@ -2029,43 +2018,72 @@
     // Disable transitions during resize to prevent timing issues
     boardEl.classList.add('no-transitions');
     
-    // Get viewport width FIRST
+    // Get viewport dimensions
     const viewportWidth = window.innerWidth;
-    const padding = 40; // Account for body margins
+    const viewportHeight = window.innerHeight;
+    const padding = 40; // Account for body margins (20px each side)
     
-    // Calculate additional space needed for challenge box if it's to the right of the board
-    let challengeBoxSpace = 0;
+    // Calculate additional horizontal space needed for challenge box if it's to the right of the board
+    let challengeBoxWidthSpace = 0;
     if (gameMode === 'challenge' && !challengeAbove) {
       // Challenge box is to the right: account for gap + full challenge box width
       const gap = 20; // gap between board and challenge box (from CSS .game-container)
       const challengeBoxMinWidth = 220; // min-width from CSS .challenge-info
       const challengeBoxPadding = 32; // padding: 16px on each side (from CSS .challenge-info)
       const challengeBoxBorder = 2; // border: 1px on each side (from CSS .challenge-info)
-      challengeBoxSpace = gap + challengeBoxMinWidth + challengeBoxPadding + challengeBoxBorder;
+      challengeBoxWidthSpace = gap + challengeBoxMinWidth + challengeBoxPadding + challengeBoxBorder;
     }
     
-    // Calculate what the board width WOULD BE at base tile size
-    const baseboardWidthPx = boardConfig.width * baseTilePx;
+    // Calculate vertical space used by other elements
+    let verticalSpace = padding; // Body margins
     
-    // Determine what tile size we need
-    let targetTilePx;
-    if (baseboardWidthPx + padding + challengeBoxSpace > viewportWidth) {
-      // Calculate new tile size to fit viewport
-      targetTilePx = Math.floor((viewportWidth - padding - challengeBoxSpace) / boardConfig.width);
+    // Add toolbar height (accounts for wrapping on small screens)
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+      verticalSpace += toolbar.offsetHeight;
+    }
+    
+    // Add challenge box height if it's above the board
+    if (gameMode === 'challenge' && challengeAbove) {
+      const challengeInfo = document.getElementById('challengeInfo');
+      if (challengeInfo) {
+        verticalSpace += challengeInfo.offsetHeight;
+        // Add gap between challenge box and board (from CSS .game-container)
+        verticalSpace += 20;
+      }
+    }
+    
+    // Calculate what the board dimensions WOULD BE at base tile size
+    const baseBoardWidthPx = boardConfig.width * baseTilePx;
+    const baseBoardHeightPx = boardConfig.height * baseTilePx;
+    
+    // Determine tile size based on width constraint
+    let targetTilePxWidth;
+    if (baseBoardWidthPx + padding + challengeBoxWidthSpace > viewportWidth) {
+      // Calculate new tile size to fit viewport width
+      targetTilePxWidth = Math.floor((viewportWidth - padding - challengeBoxWidthSpace) / boardConfig.width);
     } else {
-      // Board fits naturally, use base tile size
-      targetTilePx = baseTilePx;
+      // Board fits naturally in width, use base tile size
+      targetTilePxWidth = baseTilePx;
     }
+    
+    // Determine tile size based on height constraint
+    let targetTilePxHeight;
+    const availableHeight = viewportHeight - verticalSpace;
+    if (baseBoardHeightPx > availableHeight) {
+      // Calculate new tile size to fit viewport height
+      targetTilePxHeight = Math.floor(availableHeight / boardConfig.height);
+    } else {
+      // Board fits naturally in height, use base tile size
+      targetTilePxHeight = baseTilePx;
+    }
+    
+    // Use the smaller of the two constraints to ensure board fits in both dimensions
+    const targetTilePx = Math.min(targetTilePxWidth, targetTilePxHeight);
     
     // Apply the changes
     document.documentElement.style.setProperty('--tile', `${targetTilePx}px`);
     tilePx = targetTilePx;
-    
-    // Update toolbar max-width to match board
-    const toolbar = document.querySelector('.toolbar');
-    if (toolbar) {
-      toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
-    }
     
     // Update board dimensions
     boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
@@ -2176,11 +2194,7 @@
   }
 
   // Initialize
-  // Set initial board and toolbar dimensions
-  const toolbar = document.querySelector('.toolbar');
-  if (toolbar) {
-    toolbar.style.maxWidth = `calc(${boardConfig.width} * var(--tile))`;
-  }
+  // Set initial board dimensions
   boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
   boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
   

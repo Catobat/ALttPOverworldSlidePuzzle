@@ -141,7 +141,7 @@ lightworld.png       # Puzzle image (8×8 tile grid)
 
 #### Toolbar Structure
 The toolbar uses flexbox layout with two groups:
-- **`.toolbar`**: Main container with `justify-content: space-between` and `max-width` set dynamically to match current board width
+- **`.toolbar`**: Main container with `justify-content: space-between` spanning the full window width
 - **`.toolbar-left`**: Left-aligned button group containing:
   - Reset button
   - Shuffle button (hidden in Challenge Mode)
@@ -152,7 +152,7 @@ The toolbar uses flexbox layout with two groups:
   - Display button (☀) - Opens display settings dialog
   - Help button (?) - Opens controls reference dialog
   
-This structure ensures the right buttons stay aligned with the puzzle width rather than extending to the window edge.
+The toolbar spans the full window width with left and right button groups positioned at opposite ends using flexbox `space-between`.
 
 ### Game Modes
 
@@ -732,10 +732,16 @@ The game includes a unified display settings dialog accessed via the sun icon (�
 
 ### Auto-Scale Mode
 - **Default State**: Off by default
-- **How It Works**: When enabled, adjusts the `--tile` CSS variable to fit the viewport
-- **Calculation**: `newTileSize = (viewportWidth - 40px - challengeBoxSpace) / boardConfig.width`
-  - 40px padding accounts for body margins
-  - `challengeBoxSpace` accounts for challenge info box width when positioned to the right (274px total)
+- **How It Works**: When enabled, adjusts the `--tile` CSS variable to fit the viewport in both dimensions
+- **Dual-Constraint Calculation**: Considers both width and height to ensure board fits completely
+  - **Width Constraint**: `widthTileSize = (viewportWidth - 40px - challengeBoxSpace) / boardConfig.width`
+    - 40px padding accounts for body margins (20px each side)
+    - `challengeBoxSpace` accounts for challenge info box width when positioned to the right (274px total)
+  - **Height Constraint**: `heightTileSize = (viewportHeight - verticalSpace) / boardConfig.height`
+    - `verticalSpace` includes body margins (40px), toolbar height (measured dynamically), and challenge box height when above board
+    - Toolbar height automatically accounts for wrapping on small screens by measuring actual DOM height
+    - Challenge box height measured dynamically when positioned above board
+  - **Final Size**: Uses `Math.min(widthTileSize, heightTileSize)` to ensure board fits in both dimensions
   - Tile size rounds down to nearest pixel
 - **Iterative Sizing**: Uses an iterative approach for non-resize events to ensure proper sizing
   - Repeatedly applies scaling and checks if board width changed
@@ -746,6 +752,7 @@ The game includes a unified display settings dialog accessed via the sun icon (�
 - **Board-Aware**: Recalculates when switching between board sizes (Default 8×8, Horizontal 16×8, Vertical 8×16)
 - **Mode-Aware**: Recalculates when switching between Free Play and Challenge Mode (challenge box affects available space)
 - **Layout-Aware**: Recalculates when changing challenge box position (above vs right side)
+- **Multi-Row Toolbar Support**: Automatically handles toolbar wrapping on small screens by measuring actual DOM height
 
 ### Manual Board Size
 - **Range**: 50% to 200% in 10% increments
@@ -773,19 +780,29 @@ boardSizeScale    // Number: manual board size percentage (50-200)
     - Each iteration scheduled via `requestAnimationFrame` + 10ms delay
     - Ensures board is properly sized even when DOM hasn't fully settled
   - **Manual scale**: Applies percentage-based scaling
-    - Updates toolbar max-width and board dimensions
+    - Updates board dimensions
     - Calls `renderAll()` to update tile positions
   
 - `updateAutoFitScale()`: Calculates and applies responsive sizing (single pass)
-  - Measures viewport width
-  - Accounts for challenge box space when positioned to the right
-  - Compares against board width at base tile size
-  - If board is too wide: calculates new tile size, updates CSS variable, updates `tilePx`
-  - If board fits naturally: resets to base tile size
-  - Updates toolbar max-width to match board width dynamically
-  - Updates board dimensions via calc() expressions
-  - Calls `renderAll()` to reposition tiles
-  - Temporarily disables transitions during resize (via `.no-transitions` class)
+  - **Measures viewport dimensions**: Gets both width and height
+  - **Calculates horizontal space**:
+    - Accounts for body margins (40px)
+    - Accounts for challenge box space when positioned to the right (274px total)
+  - **Calculates vertical space**:
+    - Body margins (40px)
+    - Toolbar height (measured from DOM via `toolbar.offsetHeight`)
+    - Challenge box height when positioned above board (measured from DOM)
+    - Gap between challenge box and board (20px when applicable)
+  - **Dual constraint calculation**:
+    - Calculates tile size needed to fit width constraint
+    - Calculates tile size needed to fit height constraint
+    - Uses smaller of the two to ensure complete fit
+  - **Applies changes**:
+    - Updates CSS `--tile` variable
+    - Updates `tilePx` state variable
+    - Updates board dimensions via calc() expressions
+    - Calls `renderAll()` to reposition tiles
+    - Temporarily disables transitions during resize (via `.no-transitions` class)
 
 - `getBackgroundPositionCalc(homeX, homeY)`: Generates CSS calc() expressions for background positioning
   - Returns calc() expressions that reference `var(--tile)`
@@ -821,7 +838,6 @@ To support dynamic tile resizing:
 - Disables transitions during resize operations to prevent visual glitches
 - Uses debounced resize events to avoid excessive recalculations
 - Double requestAnimationFrame ensures DOM layout is complete before measuring
-- Toolbar max-width updates synchronously with board width changes
 
 ## Dialogs
 
@@ -829,6 +845,44 @@ All dialogs support the following dismissal methods:
 - Clicking outside the dialog (on the overlay background) using mousedown event
 - Keyboard shortcuts (Enter/Escape as appropriate for each dialog)
 - Clicking the designated close/cancel button
+
+### Modal Dialog Responsive Behavior
+For screens 600px wide or smaller, dialogs automatically adapt for better mobile usability:
+
+**Layout Adjustments** (via `@media (max-width: 600px)`):
+- **Dialog Overlay**:
+  - Adds 20px padding on all sides
+  - Aligns content to top (`align-items: flex-start`) instead of center
+  - Enables vertical scrolling (`overflow-y: auto`)
+  - Allows scrolling through entire dialog content that exceeds viewport height
+- **Dialog Container**:
+  - Removes minimum width constraint (`min-width: 0`)
+  - Expands to full available width (`width: 100%`)
+  - Removes maximum width constraint (`max-width: 100%`)
+  - Centers vertically within scrollable area (`margin: auto 0`)
+  - Reduces padding from 24px to 20px
+- **Typography**:
+  - Dialog headings reduce from 1.3rem to 1.2rem
+- **Form Elements**:
+  - Difficulty preset buttons wrap and take 50% width each
+  - Seed input group stacks vertically
+  - Daily Challenge button expands to full width
+- **Dialog Buttons**:
+  - Stack vertically in reverse order (`flex-direction: column-reverse`)
+  - All buttons expand to full width
+  - Primary action button appears at top (reversed order)
+
+**Scrolling Behavior**:
+- Touch-friendly scrolling enabled (`-webkit-overflow-scrolling: touch`)
+- Dialog content area scrolls independently if needed (`overflow-y: auto` on `.dialog-content`)
+- Prevents content from being cut off on small screens
+- Maintains header and footer visibility while content scrolls
+
+**Benefits**:
+- Ensures all dialog content is accessible on mobile devices
+- Prevents text or controls from being cut off by viewport edges
+- Provides natural scrolling behavior familiar to mobile users
+- Optimizes button layout for thumb-friendly interaction
 
 ### Help Dialog
 - Opened by clicking the "?" help button in the toolbar
