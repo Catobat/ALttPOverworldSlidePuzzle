@@ -971,7 +971,7 @@ In `tryMove()` for big pieces:
 6. Move piece and reposition both gaps simultaneously
 
 ### Shuffle Algorithm
-`shuffle(steps, seed)` ensures solvability with intelligent move selection:
+`shuffle(steps, seed)` ensures solvability with intelligent move selection using a **Distance-Based + Adaptive** system:
 - Only uses valid moves from current state
 - Never creates impossible configurations
 - Uses `enumerateValidMoves()` to get legal moves with metadata
@@ -983,25 +983,54 @@ In `tryMove()` for big pieces:
    - Only allows reversal if it's the only available move
    - Prevents pointless back-and-forth oscillations
 
-2. **Weighted Priorities**: Creates weighted array for random selection
-   - **Big piece moves** (2×2 tiles): Added 10 times → 10x probability
-     - Encourages more frequent large piece movements
-     - Makes shuffles more visually interesting and challenging
-   - **Small piece moves** (1×1 tiles): Added 1 time → normal probability
-   - **Gap swaps** (adjacent gaps swapping positions): Very low priority
-     - Only 10% chance of being included when other moves exist
-     - Used normally only when they're the sole available move
-     - Prevents excessive gap repositioning without piece movement
+2. **Hybrid Weighting System**: Combines two complementary approaches to increase large piece movement opportunities
 
-3. **Fallback Safety**: If weighted array is empty (rare edge case), uses all filtered moves
+   **A. Gap Distance Heuristic**:
+   - Calculates Manhattan distance between gaps (`gapDistance()`)
+   - For each small piece move, predicts where the moving gap will end up
+   - Applies weight multipliers based on distance change:
+     - **Brings gaps closer**: Weight increases as urgency builds (up to 1.5x at max urgency)
+     - **Pushes gaps further**: Weight decreases as urgency builds (down to 0.7x at max urgency)
+     - **Distance unchanged**: Weight stays 1.0x
+   - Does not apply to big piece moves or gap swaps
+   - Allows gaps to move apart freely early on, then gradually encourages them to converge
+   
+   **B. Adaptive Urgency System**:
+   - Tracks moves since last large piece moved (`movesSinceLastBigPiece`)
+   - Calculates urgency factor: `min(movesSinceLastBigPiece / 50, 1.0)`
+   - As urgency builds:
+     - Big piece move weight increases from 10x to 30x
+     - Small piece weights are multiplied by `(1 + urgency)`, boosting all moves
+     - Distance heuristic effect scales with urgency (stronger pull toward alignment)
+   - Resets to 0 when a large piece moves
+   - Self-correcting: automatically increases bias when large pieces haven't moved
+
+   **C. Base Weights**:
+   - **Big piece moves**: Base 10x weight + urgency bonus (up to +20x)
+   - **Small piece moves**: Base 1x weight × distance heuristic × urgency multiplier
+   - **Gap swaps**: 10% probability when other moves exist, 100% when only option
+
+3. **Tunable Constants**: All parameters exposed at top of shuffle function for easy adjustment:
+   - `URGENCY_BUILDUP_RATE`: Moves before urgency reaches maximum (default: 50)
+   - `DISTANCE_INFLUENCE`: Multiplier for distance heuristic (0-1, default: 0.5)
+   - `DISTANCE_WEIGHT_CLOSER`: Weight multiplier when gaps move closer (default: 1.5)
+   - `DISTANCE_WEIGHT_FURTHER`: Weight multiplier when gaps move further (default: 0.7)
+   - `BIG_PIECE_BASE_WEIGHT`: Base weight for large pieces (default: 10)
+   - `URGENCY_BIG_PIECE_BONUS`: Additional weight at max urgency (default: 20)
+   - `ADAPTIVE_INFLUENCE`: Multiplier for adaptive urgency (0-1, default: 1.0)
 
 4. **Mode-Specific Behavior**:
    - **Free Play Mode**: Shows animations, yields to UI periodically
    - **Challenge Mode**: Adds `.no-transitions` class to board, runs at full speed, no delays
 
 **Result**: Default 250 moves creates well-randomized, solvable puzzles with:
-- Frequent large piece movements (more challenging)
+- **More large piece movements** through distance-based gap convergence
+- Natural-feeling shuffle without forced patterns
+- Self-correcting when large pieces haven't moved recently
+- Gaps allowed to move apart freely, then gradually encouraged to converge
 - Minimal pointless gap swaps (more purposeful)
 - No immediate move reversals (more efficient randomization)
 - Guaranteed solvability (only valid moves used)
 - Hidden shuffle sequence in Challenge Mode (no information leakage)
+- Works with any number of gaps (not limited to 2)
+- **Fast execution**: No expensive move simulation, just distance calculations

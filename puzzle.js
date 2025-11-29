@@ -831,6 +831,106 @@
     return moves;
   }
 
+  // ============================================================================
+  // SHUFFLE ALGORITHM TUNING CONSTANTS
+  // ============================================================================
+  
+  // Adaptive urgency system: tracks moves since last large piece moved
+  // Increases bias toward large piece opportunities over time
+  const URGENCY_BUILDUP_RATE = 5; // Moves before urgency reaches 1.0 (lower = faster urgency)
+  const URGENCY_MAX = 1.0; // Maximum urgency multiplier
+  
+  // Gap distance heuristic: encourages gaps to move closer as urgency builds
+  const DISTANCE_INFLUENCE = 1;           // Multiplier for distance-based weighting (0 = disabled, 1 = full)
+  const DISTANCE_WEIGHT_CLOSER = 4;       // Weight multiplier when move brings gaps closer
+  const DISTANCE_WEIGHT_FURTHER = 0.5;    // Weight multiplier when move pushes gaps further
+  
+  // Base weights for move types
+  const BIG_PIECE_BASE_WEIGHT = 5;        // Base weight for large piece moves
+  const SMALL_PIECE_BASE_WEIGHT = 1;      // Base weight for small piece moves
+  const GAP_SWAP_PROBABILITY = 0.1;       // Probability of including gap swaps
+  
+  // Urgency impact on weights
+  const URGENCY_BIG_PIECE_BONUS = 30;     // Additional weight for big pieces at max urgency
+  
+  // Balance between distance heuristic and adaptive approaches
+  const ADAPTIVE_INFLUENCE = 1.0;         // Multiplier for adaptive urgency (0 = disabled, 1 = full)
+  
+  // ============================================================================
+  // SHUFFLE HELPER FUNCTIONS
+  // ============================================================================
+  
+  /**
+   * Calculate Manhattan distance between two gaps
+   * @param {Object} gap1 - First gap with x, y
+   * @param {Object} gap2 - Second gap with x, y
+   * @returns {number} Manhattan distance
+   */
+  function gapDistance(gap1, gap2) {
+    return Math.abs(gap1.x - gap2.x) + Math.abs(gap1.y - gap2.y);
+  }
+  
+  /**
+   * Calculate weight for a move based on gap distance heuristic
+   * Encourages moves that bring gaps closer together as urgency builds
+   * @param {Object} move - Move object with gapIdx and dir
+   * @param {number} urgency - Current urgency factor (0 to 1)
+   * @returns {number} Weight multiplier for this move
+   */
+  function calculateDistanceWeight(move, urgency) {
+    if (move.isGapSwap || move.isBig || gaps.length < 2) {
+      return 1.0; // Don't apply heuristic to gap swaps, big piece moves, or single gap
+    }
+    
+    // Calculate current distance between gaps
+    const currentDistance = gapDistance(gaps[0], gaps[1]);
+    
+    // Predict where the moving gap will be after this move
+    const movingGap = gaps[move.gapIdx];
+    let newX = movingGap.x;
+    let newY = movingGap.y;
+    
+    // Calculate new position based on direction
+    // Remember: tryMove direction is inverted (specifies where to look, not where gap moves)
+    if (move.dir === 'up') newY++; // Gap moves down (piece from below moves up into gap)
+    if (move.dir === 'down') newY--; // Gap moves up
+    if (move.dir === 'left') newX++; // Gap moves right
+    if (move.dir === 'right') newX--; // Gap moves left
+    
+    // Calculate distance after move
+    const otherGap = gaps[1 - move.gapIdx];
+    const newDistance = Math.abs(newX - otherGap.x) + Math.abs(newY - otherGap.y);
+    
+    // Determine if move brings gaps closer or pushes them further
+    let weight = 1.0;
+    if (newDistance < currentDistance) {
+      // Move brings gaps closer: apply positive weight scaled by urgency
+      weight = 1.0 + (DISTANCE_WEIGHT_CLOSER - 1.0) * urgency * DISTANCE_INFLUENCE;
+    } else if (newDistance > currentDistance) {
+      // Move pushes gaps further: apply negative weight scaled by urgency
+      weight = 1.0 - (1.0 - DISTANCE_WEIGHT_FURTHER) * urgency * DISTANCE_INFLUENCE;
+    }
+    // If distance unchanged, weight stays 1.0
+    
+    return weight;
+  }
+  
+  /**
+   * Calculate shuffle quality score based on Manhattan distance of large pieces from home
+   * Higher score = more scrambled puzzle
+   * @returns {number} Sum of Manhattan distances for all large pieces
+   */
+  function calculateShuffleScore() {
+    let totalDistance = 0;
+    
+    for (const tile of bigTiles) {
+      const manhattanDistance = Math.abs(tile.x - tile.homeX) + Math.abs(tile.y - tile.homeY);
+      totalDistance += manhattanDistance;
+    }
+    
+    return totalDistance;
+  }
+  
   async function shuffle(steps, seed = null) {
     shuffleBtn.disabled = true; resetBtn.disabled = true; challengeBtn.disabled = true;
     isShuffling = true; // Set flag to prevent move counting
@@ -853,6 +953,7 @@
     const randomInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max);
     
     let lastMove = null; // Remember last move to avoid immediate reversal
+    let movesSinceLastBigPiece = 0; // Track moves since last large piece moved (adaptive urgency)
     try {
       for (let i=0; i<steps; i++) {
         const moves = enumerateValidMoves();
@@ -877,30 +978,55 @@
           }
         }
         
-        // Create weighted array with priorities:
-        // - Big piece moves: 10x weight (high priority)
-        // - Small piece moves: 1x weight (normal priority)
-        // - Gap swaps: only if no other moves available, otherwise very low priority
+        // ====================================================================
+        // HYBRID SHUFFLE WEIGHTING SYSTEM
+        // Combines gap distance heuristic with adaptive urgency
+        // ====================================================================
+        
+        // Calculate urgency factor (0 to URGENCY_MAX)
+        const urgency = Math.min(movesSinceLastBigPiece / URGENCY_BUILDUP_RATE, URGENCY_MAX) * ADAPTIVE_INFLUENCE;
+        
+        // Create weighted array with hybrid priorities
         const weightedMoves = [];
         const hasNonGapSwapMoves = filteredMoves.some(m => !m.isGapSwap);
         
         for (const move of filteredMoves) {
           if (move.isBig) {
-            // Add big piece moves 10 times for higher probability
-            weightedMoves.push(move, move, move, move, move, move, move, move, move, move);
+            // Big piece moves: base weight + urgency bonus
+            const bigWeight = BIG_PIECE_BASE_WEIGHT + Math.floor(urgency * URGENCY_BIG_PIECE_BONUS);
+            for (let i = 0; i < bigWeight; i++) {
+              weightedMoves.push(move);
+            }
+            
           } else if (move.isGapSwap) {
-            // Only add gap swaps if there are no other moves, or add with very low weight
+            // Gap swaps: only if no other moves, or with low probability
             if (!hasNonGapSwapMoves) {
               weightedMoves.push(move);
-            }
-            // If there are other moves, gap swaps get very low priority (1/10 of normal)
-            // We add them occasionally but rarely
-            else if (random() < 0.1) {
+            } else if (random() < GAP_SWAP_PROBABILITY) {
               weightedMoves.push(move);
             }
+            
           } else {
-            // Small piece moves get normal weight
-            weightedMoves.push(move);
+            // Small piece moves: apply distance heuristic + urgency adjustment
+            
+            let weight = SMALL_PIECE_BASE_WEIGHT;
+            
+            // Apply distance-based weighting (encourages gaps to move closer as urgency builds)
+            if (DISTANCE_INFLUENCE > 0) {
+              const distanceWeight = calculateDistanceWeight(move, urgency);
+              weight *= distanceWeight;
+            }
+            
+            // Apply urgency: as urgency increases, all small piece moves get boosted
+            if (ADAPTIVE_INFLUENCE > 0) {
+              weight *= (1 + urgency);
+            }
+            
+            // Add move to weighted array based on calculated weight
+            const count = Math.max(1, Math.round(weight));
+            for (let i = 0; i < count; i++) {
+              weightedMoves.push(move);
+            }
           }
         }
         
@@ -913,6 +1039,13 @@
         selectedGapIdx = m.gapIdx;
         tryMove(m.dir);
         lastMove = m; // Remember this move for next iteration
+        
+        // Update urgency tracker
+        if (m.isBig) {
+          movesSinceLastBigPiece = 0; // Reset urgency when big piece moves
+        } else {
+          movesSinceLastBigPiece++; // Increase urgency
+        }
         
         // Only yield to UI in Free Play mode (for animation visibility)
         // In Challenge Mode, run at full speed without delays
@@ -932,6 +1065,10 @@
       
       isShuffling = false; // Clear flag after shuffle completes
       shuffleBtn.disabled = false; resetBtn.disabled = false; challengeBtn.disabled = false;
+      
+      // Calculate and log shuffle quality score
+      const shuffleScore = calculateShuffleScore();
+      console.log(`Shuffle complete. Score: ${shuffleScore} (sum of Manhattan distances for large pieces)`);
     }
   }
 
