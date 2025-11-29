@@ -120,6 +120,7 @@
   const helpDialog = document.getElementById('helpDialog');
   const helpCloseBtn = document.getElementById('helpCloseBtn');
   const challengeTimerDisplay = document.getElementById('challengeTimerDisplay');
+  const timerShowBtn = document.getElementById('timerShowBtn');
   const timerToggleBtn = document.getElementById('timerToggleBtn');
 
   // Seeded Random Number Generator (LCG algorithm)
@@ -167,6 +168,7 @@
   let timerElapsedTime = 0;
   let timerInterval = null;
   let timerPaused = false;
+  let timerHidden = false;
   
   // Display settings state
   let autoFitEnabled = false;
@@ -436,7 +438,9 @@
     if (!timerPaused && timerStartTime !== null) {
       const currentTime = Date.now();
       const elapsed = Math.floor((currentTime - timerStartTime + timerElapsedTime) / 1000);
-      challengeTimerDisplay.textContent = formatTime(elapsed);
+      if (!timerHidden) {
+        challengeTimerDisplay.textContent = formatTime(elapsed);
+      }
     }
   }
 
@@ -446,7 +450,20 @@
     timerStartTime = Date.now();
     timerElapsedTime = 0;
     timerPaused = false;
+    
+    // Restore timer hidden state from localStorage
+    const savedTimerHidden = localStorage.getItem('timerHidden') === 'true';
+    timerHidden = savedTimerHidden;
+    
     challengeTimerDisplay.textContent = '0:00';
+    if (timerHidden) {
+      challengeTimerDisplay.style.display = 'none';
+      timerShowBtn.style.display = '';
+    } else {
+      challengeTimerDisplay.style.display = '';
+      timerShowBtn.style.display = 'none';
+    }
+    
     timerToggleBtn.textContent = '⏸';
     timerToggleBtn.setAttribute('aria-label', 'Pause timer');
     timerToggleBtn.setAttribute('title', 'Pause');
@@ -487,8 +504,11 @@
     timerStartTime = null;
     timerElapsedTime = 0;
     timerPaused = false;
+    timerHidden = false;
     boardEl.classList.remove('paused');
     challengeTimerDisplay.textContent = '0:00';
+    challengeTimerDisplay.style.display = '';
+    timerShowBtn.style.display = 'none';
     timerToggleBtn.textContent = '⏸';
     timerToggleBtn.setAttribute('aria-label', 'Pause timer');
     timerToggleBtn.setAttribute('title', 'Pause');
@@ -843,7 +863,7 @@
   // Gap distance heuristic: encourages gaps to move closer as urgency builds
   const DISTANCE_INFLUENCE = 1;           // Multiplier for distance-based weighting (0 = disabled, 1 = full)
   const DISTANCE_WEIGHT_CLOSER = 4;       // Weight multiplier when move brings gaps closer
-  const DISTANCE_WEIGHT_FURTHER = 0.5;    // Weight multiplier when move pushes gaps further
+  const DISTANCE_WEIGHT_FURTHER = 0.25;   // Weight multiplier when move pushes gaps further
   
   // Base weights for move types
   const BIG_PIECE_BASE_WEIGHT = 5;        // Base weight for large piece moves
@@ -1888,6 +1908,35 @@
   giveUpBtn.addEventListener('click', () => {
     switchToFreePlay();
     boardEl.focus();
+  });
+
+  // Timer display click handler - hides the timer
+  challengeTimerDisplay.addEventListener('click', () => {
+    if (gameMode !== 'challenge') return;
+    
+    timerHidden = true;
+    localStorage.setItem('timerHidden', 'true');
+    challengeTimerDisplay.style.display = 'none';
+    timerShowBtn.style.display = '';
+  });
+
+  // Timer show button handler - shows the timer
+  timerShowBtn.addEventListener('click', () => {
+    timerHidden = false;
+    localStorage.setItem('timerHidden', 'false');
+    
+    // Update display immediately when showing
+    if (timerStartTime !== null && !timerPaused) {
+      const currentTime = Date.now();
+      const elapsed = Math.floor((currentTime - timerStartTime + timerElapsedTime) / 1000);
+      challengeTimerDisplay.textContent = formatTime(elapsed);
+    } else if (timerPaused) {
+      const elapsed = Math.floor(timerElapsedTime / 1000);
+      challengeTimerDisplay.textContent = formatTime(elapsed);
+    }
+    
+    challengeTimerDisplay.style.display = '';
+    timerShowBtn.style.display = 'none';
   });
 
   // Timer toggle button handler

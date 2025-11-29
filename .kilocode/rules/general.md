@@ -203,6 +203,13 @@ The game has two distinct modes:
   - Stops automatically when puzzle is solved (without blur effect)
   - Timer button is disabled when puzzle is solved (no pause/resume after completion)
   - Displays in M:SS format (e.g., 2:34 for times under 1 hour, 62:15 for 1 hour 2 minutes)
+- **Timer Visibility**:
+  - Click on the timer display to hide it
+  - When hidden, a "Show" button appears in place of the timer
+  - Click "Show" to reveal the timer again
+  - Timer continues running in the background when hidden
+  - Visibility preference is saved to localStorage and persists across sessions
+  - "Show" button has same 28px height as pause button for consistent appearance
 - **Win Condition**:
   - When puzzle is solved, congratulations dialog appears, showing moves and time
   - All moves and gap switching are locked
@@ -246,6 +253,7 @@ timerStartTime       // Timestamp when timer started (null when stopped)
 timerElapsedTime     // Accumulated elapsed time in milliseconds
 timerInterval        // Interval ID for timer updates (100ms)
 timerPaused          // Boolean flag indicating if timer is paused
+timerHidden          // Boolean flag indicating if timer display is hidden
 ```
 
 #### Grid Cell Format
@@ -395,6 +403,8 @@ timerPaused          // Boolean flag indicating if timer is paused
   - Sets start timestamp
   - Creates 100ms interval to update display
   - Sets pause button to ⏸ icon
+  - Restores timer visibility state from localStorage
+  - Shows/hides timer display and "Show" button based on saved preference
 - `pauseTimer()`: Pauses the timer and blurs board
   - Stops timer interval
   - Accumulates elapsed time
@@ -424,6 +434,7 @@ timerPaused          // Boolean flag indicating if timer is paused
 - `updateTimer()`: Updates timer display
   - Calculates elapsed time since start + accumulated time
   - Calls formatTime and updates display element
+  - Skips display update when timer is hidden (continues tracking in background)
 
 #### Mouse Control Utilities
 The mouse control system uses shared utility functions to eliminate code duplication between swipe and drag controls:
@@ -496,6 +507,8 @@ The mouse control system uses shared utility functions to eliminate code duplica
   - Shuffle button: Calls `shuffle(250)` (Free Play only)
   - New Challenge button: Opens challenge dialog
   - Give Up button: Calls `switchToFreePlay()` (Challenge Mode only)
+  - Timer display click: Hides timer and shows "Show" button, saves preference to localStorage
+  - "Show" button click: Reveals timer with current time, hides "Show" button, saves preference to localStorage
 
 ### CSS Variables & Styling
 Defined in `puzzle.css`:

@@ -213,6 +213,13 @@ body.challenge-above .challenge-stat-value {
   transform: translateY(1px);
 }
 
+#timerShowBtn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
 #board {
   position: relative;
   width: calc(8 * var(--tile));
