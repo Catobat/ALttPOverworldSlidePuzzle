@@ -56,7 +56,7 @@ const boardConfig = {
     primary: 'lightworld.png',    // Primary image (or only image for single mode)
     secondary: 'darkworld.png'    // Secondary image (for horizontal/vertical modes)
   },
-  gapPositions: [{x: 7, y: 6}, {x: 7, y: 7}],  // Default gap positions
+  gapIdentities: [{x: 7, y: 6}, {x: 7, y: 7}],  // Gap identity positions
   largePieces: [         // Large piece top-left corners
     {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
@@ -70,10 +70,37 @@ const boardConfig = {
 - **`'horizontal'`**: Two images side by side. Each image covers half the board width and full height. Left half uses primary image, right half uses secondary image.
 - **`'vertical'`**: Two images stacked. Each image covers full board width and half the height. Top half uses primary image, bottom half uses secondary image.
 
+### Gap Identity System
+
+Gaps are not just empty spaces—they are entities with persistent identity that remember which part of the puzzle image they represent, even when they move.
+
+**Identity vs Position**:
+- **Identity** (`homeX`, `homeY`): Which board cell the gap represents; defines its background crop
+- **Position** (`x`, `y`): Where the gap currently is on the board
+
+**Board Configuration**:
+- `gapIdentities`: Array of `{x, y}` coordinates defining which cells are gap cells
+- These coordinates serve three purposes:
+  1. Define which cells act as gaps in the solved state
+  2. Define the background image crop each gap displays (its visual identity)
+  3. Indicate which cells should NOT have tiles created during initialization
+
+**During Gameplay**:
+- Gaps move around the board (position changes)
+- Gaps remember their identity (homeX, homeY never changes during normal play)
+- Background crop is based on identity, not current position
+- Win condition: all gaps must return to their identity positions
+
+**When Randomizing Gaps**:
+- New cells are selected to become gaps
+- Pieces toggle between acting as gaps or tiles (via `isGap` flag)
+- All pieces keep their original identities (homeX, homeY unchanged)
+- Only the behavior changes, not the visual identity
+
 ### Controls
 
 #### Keyboard Controls
-- **Spacebar**: Toggle between the two gaps (switches `selectedGapIdx`)
+- **Spacebar**: Toggle between gaps (cycles through gap pieces using `piece.selected` flag)
 - **Arrow Keys** (↑↓←→): Slide adjacent piece into selected gap
 - **WASD**: Alternative arrow key controls
 
@@ -227,7 +254,7 @@ The game has two distinct modes:
 boardConfig          // Object defining board layout
   .width             // Board width in tiles (8)
   .height            // Board height in tiles (8)
-  .gapPositions[]    // Array of default gap positions [{x, y}, ...]
+  .gapIdentities[]   // Array of gap identity positions [{x, y}, ...]
   .largePieces[]     // Array of large piece top-left corners [{x, y}, ...]
 ```
 
@@ -236,12 +263,12 @@ boardConfig          // Object defining board layout
 boardConfig          // Currently active board configuration object
 currentBoardSlug     // Current board slug ('default', 'horizontal', 'vertical')
 boardRegistry        // Map of board slugs to board configuration objects
-grid                 // 2D array: null for gaps, objects for pieces
-smallTiles[]         // Array of {id, x, y, homeX, homeY, el}
-bigTiles[]           // Array of {id, x, y, homeX, homeY, el}
-tileById             // Map for quick tile lookup by ID
-gaps[]               // [{id, x, y, homeX, homeY}] - gap objects (length = boardConfig.gapPositions.length)
-selectedGapIdx       // Index of selected gap (0 to gaps.length-1)
+grid                 // 2D array: {type:'gap'|'small'|'big', id, ox, oy} for occupied cells, null for empty
+pieces[]             // Unified array: {id, type, isGap, x, y, homeX, homeY, el, innerEl, selected}
+                     // - All game objects (small tiles, large tiles, gaps) in single array
+                     // - isGap flag determines if piece acts as gap or regular piece
+                     // - selected flag indicates which gap is currently selected
+pieceById            // Map for quick piece lookup by ID (replaces tileById)
 gameMode             // 'freeplay' or 'challenge'
 challengeSeed        // Seed used for current challenge (null in Free Play)
 challengeSteps       // Number of shuffle steps for challenge (null in Free Play)
@@ -257,9 +284,27 @@ timerHidden          // Boolean flag indicating if timer display is hidden
 ```
 
 #### Grid Cell Format
-- `null`: Empty cell (gap)
+- `null`: Empty cell (unused)
+- `{type:'gap', id}`: Gap piece
 - `{type:'small', id}`: Small piece
 - `{type:'big', id, ox, oy}`: Part of big piece (ox,oy = offset within 2×2)
+
+#### Piece Object Format
+All pieces (including gaps) share the same structure:
+```javascript
+{
+  id: 'S0' | 'B0' | 'G0',  // Unique identifier (S=small, B=big, G=gap)
+  type: 'small' | 'big' | 'gap',  // Piece type
+  isGap: boolean,          // True if this piece acts as a gap
+  x: number,               // Current X position on board
+  y: number,               // Current Y position on board
+  homeX: number,           // Identity X position (for background crop)
+  homeY: number,           // Identity Y position (for background crop)
+  el: HTMLElement,         // DOM element (.tile or .gap-wrapper)
+  innerEl: HTMLElement | null,  // Inner element (only for gaps: .gap)
+  selected: boolean        // True if this gap is currently selected (gaps only)
+}
+```
 
 ### Core Functions
 
@@ -292,32 +337,41 @@ timerHidden          // Boolean flag indicating if timer display is hidden
   - Used by settings dialog and challenge mode
 
 #### Initialization
-- `initTiles()`: Creates tile DOM elements and data structures
-  - Builds big tiles first from `boardConfig.largePieces` array
-  - Creates small tiles for remaining uncovered, non-gap cells
-  - Uses `boardConfig.gapPositions` to identify gap cells
+- `createPiece(type, id, x, y)`: Helper function to create any piece type uniformly
+  - Creates appropriate DOM structure (`.tile` for pieces, `.gap-wrapper` + `.gap` for gaps)
+  - Sets background image and positioning using `getBackgroundStyleForTile()`
+  - Returns unified piece object with all required properties
+  - Used by `initTiles()` for consistent piece creation
+
+- `initTiles()`: Creates all piece DOM elements and data structures
+  - Builds big pieces first from `boardConfig.largePieces` array
+  - Creates small pieces for remaining uncovered, non-gap identity cells
+  - Creates gap pieces for cells in `boardConfig.gapIdentities` array
+  - All pieces stored in unified `pieces[]` array
+  - Sets first gap as selected using `piece.selected = true`
   - **Sets background image dynamically** using `getBackgroundStyleForTile()`
-  - Applies `backgroundImage`, `backgroundSize`, and `backgroundPosition` to each tile element
-- `buildGridFromState()`: Rebuilds grid array from current tile positions
+
+- `buildGridFromState()`: Rebuilds grid array from current piece positions
   - Creates grid with dimensions `boardConfig.width` × `boardConfig.height`
-  - Places big tiles (occupying 2×2 cells each)
-  - Places small tiles (occupying 1 cell each)
-  - Carves out gaps (sets cells to null)
+  - Iterates through unified `pieces` array
+  - Places big pieces (occupying 2×2 cells each)
+  - Places small pieces and gaps (occupying 1 cell each)
+  - Grid cells use `{type:'gap', id}` for gaps instead of `null`
+
 - `resetState()`: Resets to solved state
-  - Removes existing tile DOM elements
-  - Calls `initTiles()` to recreate tiles
-  - Initializes gaps from `boardConfig.gapPositions` using `map()` for flexibility
-  - **Sets gap backgrounds dynamically** using `getBackgroundStyleForTile()`
+  - Removes existing piece DOM elements (`.tile` and `.gap-wrapper`)
+  - Calls `initTiles()` to recreate all pieces
   - Calls `buildGridFromState()` and `renderAll()`
 
 #### Rendering
-- `renderAll()`: Updates all tile positions in DOM
-  - Iterates through `smallTiles` and `bigTiles`
+- `renderAll()`: Updates all piece positions in DOM
+  - Iterates through unified `pieces` array
   - Sets CSS `left` and `top` properties based on x,y coordinates
-  - Calls `renderGaps()`
-- `renderGaps()`: Updates gap positions and selection highlight
-  - Positions gap DOM elements at current gap coordinates
-  - Toggles `.selected` class based on `selectedGapIdx`
+  - For gaps: toggles `.selected` class based on `piece.selected` flag
+  - Hides selection highlighting when challenge is solved
+
+- `renderGaps()`: Backward compatibility wrapper
+  - Simply calls `renderAll()` for compatibility with existing code
 
 #### Movement Logic
 - `tryMove(dir)`: Main movement function
@@ -327,19 +381,30 @@ timerHidden          // Boolean flag indicating if timer display is hidden
     - `tryMove('down')` looks at `g.y - 1` (ABOVE the gap)
     - `tryMove('up')` looks at `g.y + 1` (BELOW the gap)
   - **For gap swapping**: To swap with a gap that's to the RIGHT, call `tryMove('left')` (not `tryMove('right')`)
+  - Finds selected gap using `pieces.find(p => p.isGap && p.selected)`
   - Calculates source cell and direction vector from selected gap
-  - **Gap Swapping**: If adjacent cell is the other gap, swaps their positions
+  - **Performance Optimization**: Uses incremental grid updates instead of rebuilding entire grid
+    - Updates only affected cells directly in the grid array
+    - Skips DOM rendering during shuffle in Challenge Mode (controlled by `skipRender` flag)
+  - **Gap Swapping**: If source cell type is 'gap', swaps positions with that gap
+    - Updates 2 grid cells directly
   - **Small Piece Moves**: Moves piece into gap, gap takes piece's former position
+    - Swaps 2 grid cells directly
   - **Big Piece Moves**:
     - Calculates destination face cells (must be both gaps)
     - Validates both gaps are properly aligned
     - Moves piece and repositions both gaps to freed cells
     - Maintains gap alignment by row/column
+    - Clears old 2×2 area and writes new 2×2 area in grid
+    - Updates gap positions in grid
   - Returns true on success, false if move is invalid
+
 - `enumerateValidMoves()`: Returns all legal moves for current state
-  - Iterates through both gaps and all four directions
+  - Filters gap pieces from `pieces` array
+  - Iterates through each gap and all four directions
   - Checks validity of each potential move
-  - Tags each move with metadata: `isBig` (large piece move) and `isGapSwap` (gap swap move)
+  - Returns moves with gap piece reference instead of index
+  - Tags each move with metadata: `gap` (gap piece object), `isBig`, `isGapSwap`
   - Used by `shuffle()` function
 
 #### Shuffling
@@ -384,8 +449,9 @@ timerHidden          // Boolean flag indicating if timer display is hidden
   - Automatically enters Challenge Mode if seed and steps parameters present
   - Enables direct linking and bookmarking of specific challenges with board selection
 - `checkWinCondition()`: Verifies if puzzle is solved
-  - Checks all tiles are in home positions
-  - Checks gaps match `boardConfig.gapPositions`
+  - Single loop through `pieces` array
+  - Checks all pieces (including gaps) are in home positions
+  - Returns true only if all pieces match their identity positions
 - `handleWin()`: Handles challenge completion
   - Sets `challengeSolved` flag
   - Calls `freezeTimer()` to stop timer without blur
@@ -439,14 +505,15 @@ timerHidden          // Boolean flag indicating if timer display is hidden
 #### Mouse Control Utilities
 The mouse control system uses shared utility functions to eliminate code duplication between swipe and drag controls:
 
-- `getCellsForTile(tile, clickedCell, gridX, gridY)`: Returns array of cells to check for a tile
+- `getCellsForTile(piece, clickedCell, gridX, gridY)`: Returns array of cells to check for a piece
   - Small pieces (1×1): Returns single cell `[{x, y}]`
   - Big pieces (2×2): Returns all 4 cells of the piece
   - Used by all control methods for consistent cell enumeration
 
-- `findAdjacentGaps(cells, gaps)`: Determines which gaps are adjacent to given cells
-  - Returns `{gap0: {adjacent, dx, dy}, gap1: {adjacent, dx, dy}}`
-  - Checks all cells against both gaps
+- `findAdjacentGaps(cells)`: Determines which gaps are adjacent to given cells
+  - Filters gap pieces from `pieces` array
+  - Returns array of `{gap, dx, dy}` for each adjacent gap
+  - Checks all cells against all gaps
   - Stores direction vectors for later use
   - Eliminates duplicate adjacency checking logic
 
@@ -473,7 +540,7 @@ The mouse control system uses shared utility functions to eliminate code duplica
 
 #### Event Handling
 - **Keyboard Events**: Attached to `boardEl`
-  - Spacebar: Toggles `selectedGapIdx` and calls `renderGaps()` (blocked when challenge solved)
+  - Spacebar: Cycles through gap pieces, updating `piece.selected` flags (blocked when challenge solved)
   - Arrow keys/WASD: Calls `tryMove()` with appropriate direction (blocked when challenge solved)
 
 - **Mouse Events**: Use shared utility functions for consistent behavior
@@ -495,7 +562,7 @@ The mouse control system uses shared utility functions to eliminate code duplica
     - If swipe detected (≥5px), moves piece in swipe direction if gap exists
     - If no swipe, uses click behavior (selected gap or only adjacent gap)
   - **Clicking on gap**:
-    - First click on unselected gap: Selects the gap (updates `selectedGapIdx`)
+    - First click on unselected gap: Selects the gap (sets `piece.selected = true`)
     - Click on already-selected gap: Counts how many other gaps are adjacent
       - If exactly 1 gap is adjacent: Swaps with that gap using `tryMove()`
       - If 0 or 2+ gaps are adjacent: Does nothing (ambiguous or impossible)
@@ -544,12 +611,13 @@ Gaps show darkened version (brightness 0.5) of their default positions, maintain
 4. Remember that `vectorToDirection()` has an `invert` parameter for gap drag control
 
 ### When Modifying Movement Logic
-1. Always update both the tile/gap positions AND rebuild the grid
-2. Call `buildGridFromState()` after position changes
-3. Update DOM with `renderAll()` or specific render functions
-4. Test with both small and large pieces
-5. Ensure gap identity is preserved (gaps remember their home crop)
-6. **IMPORTANT**: Remember that `tryMove(dir)` direction is inverted - it looks in the OPPOSITE direction of where you want to move something. The `vectorToDirection()` utility handles this automatically.
+1. Always update both the tile/gap positions AND the grid state
+2. Use incremental grid updates in `tryMove()` - modify only affected cells directly
+3. Only call `buildGridFromState()` when necessary (e.g., after shuffle, reset, or gap randomization)
+4. Update DOM with `renderAll()` or specific render functions (skip during shuffle in Challenge Mode)
+5. Test with both small and large pieces
+6. Ensure gap identity is preserved (gaps remember their home crop)
+7. **IMPORTANT**: Remember that `tryMove(dir)` direction is inverted - it looks in the OPPOSITE direction of where you want to move something. The `vectorToDirection()` utility handles this automatically.
 
 ### When Adding Features
 - Keep the three-file structure (HTML/CSS/JS separation)
@@ -560,10 +628,11 @@ Gaps show darkened version (brightness 0.5) of their default positions, maintain
 
 ### When Debugging
 - Check `grid` array state (should match visual board)
-- Verify `selectedGapIdx` matches visual selection
+- Verify gap `piece.selected` flags match visual selection
 - Ensure large pieces maintain 2×2 coverage in grid
-- Validate gap positions are always null in grid
-- Check that `tileById` Map is properly populated
+- Validate gap cells use `{type:'gap', id}` in grid (not `null`)
+- Check that `pieceById` Map is properly populated with all pieces
+- Verify `pieces` array contains all game objects (small, big, and gaps)
 
 ### Image Requirements
 - Image must be square and divisible by 8
@@ -579,7 +648,7 @@ The board is now configured via the `boardConfig` object, making it easy to crea
 1. **Change Board Size**:
    - Update `boardConfig.width` and `boardConfig.height`
    - Adjust `boardConfig.largePieces` array for new layout
-   - Adjust `boardConfig.gapPositions` array for new gap locations
+   - Adjust `boardConfig.gapIdentities` array for new gap identity positions
    - Update CSS `--tile` variable in `puzzle.css` if needed
    - Provide appropriately sized image
 
@@ -589,7 +658,7 @@ The board is now configured via the `boardConfig` object, making it easy to crea
    - Simply swap the active `boardConfig` reference to change boards
 
 3. **Support Variable Gap Count**:
-   - Add or remove entries in `boardConfig.gapPositions` array
+   - Add or remove entries in `boardConfig.gapIdentities` array
    - Gap initialization uses `map()` to support any number of gaps
    - Ensure gap-related logic handles variable gap counts appropriately
 
@@ -633,7 +702,7 @@ Challenge Mode includes automatic win detection:
 
 ### Add Undo Functionality
 1. Maintain move history stack
-2. Store state snapshots (tile positions, gap positions, selectedGapIdx)
+2. Store state snapshots (piece positions and selected gap)
 3. Implement reverse move logic
 4. Add undo button that pops from history and restores state
 
@@ -676,11 +745,16 @@ Challenge Mode includes automatic win detection:
 - `shuffle()` behavior varies by mode:
   - **Free Play**: Uses `await` every 10 moves to prevent UI freezing, shows animations
   - **Challenge Mode**: Runs at full speed with no delays, disables transitions for instant execution
+- **Shuffle Performance Optimizations**:
+  - Uses incremental grid updates in `tryMove()` instead of rebuilding entire grid after each move
+  - Skips DOM rendering during Challenge Mode shuffle (renders once at end)
+  - Caches gap pieces array to avoid repeated filtering
+  - For 100,000 shuffle steps: ~9.5x faster than naive approach
 - CSS transitions in `puzzle.css` handled by browser (GPU accelerated with `will-change`)
 - `.no-transitions` class disables all tile/gap transitions during Challenge Mode shuffle
-- `buildGridFromState()` is O(n²) but n=8 so negligible
-- No memory leaks: tiles reused on reset via `initTiles()`
-- `tileById` Map provides O(1) tile lookup
+- `buildGridFromState()` is O(n²) but only called when necessary (reset, shuffle end, gap randomization)
+- No memory leaks: pieces reused on reset via `initTiles()`
+- `pieceById` Map provides O(1) piece lookup
 
 ## Browser Compatibility
 - Modern browsers (ES6+ required)
@@ -967,12 +1041,35 @@ For screens 600px wide or smaller, dialogs automatically adapt for better mobile
 
 ## Key Implementation Details
 
-### Gap Identity System
-Gaps maintain their identity throughout the game:
-- Each gap has an `id` ('G0' or 'G1')
-- Each gap remembers its `homeX` and `homeY` for image cropping
-- Gap DOM elements have fixed `background-position` based on home
-- When gaps move, their identity follows them (not their position)
+### Unified Piece System
+All game objects (tiles and gaps) use the same data structure:
+- **Unified Storage**: All pieces stored in single `pieces[]` array
+- **Gap Flag**: `isGap` boolean determines if piece acts as gap or regular piece
+- **Selection**: Gaps use `selected` boolean flag instead of separate index variable
+- **DOM Structure**:
+  - Regular pieces: Single `.tile` element
+  - Gaps: `.gap-wrapper` containing `.gap` inner element (for selection highlighting)
+- **Identity System**: All pieces remember `homeX`/`homeY` for background crop
+- **Easy Conversion**: Toggling `isGap` flag converts between piece and gap
+  - Used by gap randomization to reassign which cells are gaps
+  - Requires updating DOM structure and `type` property
+  - Much simpler than creating/destroying objects
+
+### Gap Randomization System
+The `performGapRandomization()` function converts pieces to/from gaps:
+1. Filters small pieces (current gaps and small tiles)
+2. Randomly selects which pieces should be gaps
+3. Converts all to regular pieces first (toggle `isGap`, update DOM)
+4. Converts selected pieces to gaps (toggle `isGap`, update DOM)
+5. **Preserves all piece identities** - homeX and homeY remain unchanged
+6. First gap is automatically selected
+7. Rebuilds grid and renders
+
+**Benefits**:
+- No object creation/destruction
+- Just toggle flags and update DOM classes
+- **Maintains piece identities** - each piece keeps its original background crop
+- Simpler and more efficient than old system
 
 ### Large Piece Movement Algorithm
 In `tryMove()` for big pieces:

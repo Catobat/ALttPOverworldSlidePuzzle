@@ -89,6 +89,13 @@
             <option value="vertical">Vertical (8×16)</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>Gap Positions:</label>
+          <div class="gap-control-buttons">
+            <button type="button" id="resetGapsBtn" class="btn">Reset Gaps</button>
+            <button type="button" id="randomizeGapsBtn" class="btn">Randomize Gaps</button>
+          </div>
+        </div>
         <div class="settings-warning">
           <strong>Note:</strong> Changing the board will reset the puzzle to its solved state.
         </div>
@@ -146,6 +153,12 @@
             <option value="horizontal">Horizontal (16×8)</option>
             <option value="vertical">Vertical (8×16)</option>
           </select>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="randomizeGapsCheckbox" />
+            <span>Randomize gaps</span>
+          </label>
         </div>
         <div class="form-group">
           <label for="seedInput">Seed (leave empty for random):</label>

@@ -7,6 +7,25 @@
   // - 'horizontal': Two images side by side (left/right halves)
   // - 'vertical': Two images stacked (top/bottom halves)
   
+  // Gap Identity System:
+  //
+  // The `gapIdentities` array defines which board cells are "gap cells" by identity.
+  // Each coordinate represents:
+  // 1. A cell that acts as a gap in the SOLVED state
+  // 2. The background image crop that gap will display (its visual identity)
+  // 3. A cell that should NOT have a tile created for it during initialization
+  //
+  // During gameplay:
+  // - Gaps can move to different positions (gaps[i].x, gaps[i].y)
+  // - But they remember their identity (gaps[i].homeX, gaps[i].homeY)
+  // - The background crop is based on identity, not current position
+  // - Win condition: all gaps must return to their identity positions
+  //
+  // When randomizing gaps:
+  // - New cells become gaps and adopt NEW identities based on their position
+  // - Old gap cells become tiles with identities matching their position
+  // - This effectively "redefines" which cells are gap cells
+  
   const defaultBoard = {
     width: 8,           // Board width in tiles
     height: 8,          // Board height in tiles
@@ -14,7 +33,7 @@
     images: {
       primary: 'lightworld.png'  // Single image for entire board
     },
-    gapPositions: [     // Default gap positions (array of {x, y})
+    gapIdentities: [    // Gap identity positions (array of {x, y})
       {x: 7, y: 6},
       {x: 7, y: 7}
     ],
@@ -33,7 +52,7 @@
       primary: 'lightworld.png',   // Left half (x: 0-7)
       secondary: 'darkworld.png'   // Right half (x: 8-15)
     },
-    gapPositions: [     // Gaps in bottom right corner of right half
+    gapIdentities: [    // Gap identity positions in bottom right corner of right half
       {x: 15, y: 6},
       {x: 15, y: 7}
     ],
@@ -56,7 +75,7 @@
       primary: 'lightworld.png',   // Top half (y: 0-7)
       secondary: 'darkworld.png'   // Bottom half (y: 8-15)
     },
-    gapPositions: [     // Gaps in bottom right corner of bottom half
+    gapIdentities: [    // Gap identity positions in bottom right corner of bottom half
       {x: 7, y: 14},
       {x: 7, y: 15}
     ],
@@ -95,6 +114,8 @@
   const settingsBoardSelect = document.getElementById('settingsBoardSelect');
   const settingsApplyBtn = document.getElementById('settingsApplyBtn');
   const settingsCancelBtn = document.getElementById('settingsCancelBtn');
+  const resetGapsBtn = document.getElementById('resetGapsBtn');
+  const randomizeGapsBtn = document.getElementById('randomizeGapsBtn');
   const displayDialog = document.getElementById('displayDialog');
   const darkModeCheckbox = document.getElementById('darkModeCheckbox');
   const autoScaleCheckbox = document.getElementById('autoScaleCheckbox');
@@ -104,6 +125,7 @@
   const displayCloseBtn = document.getElementById('displayCloseBtn');
   const challengeDialog = document.getElementById('challengeDialog');
   const challengeBoardSelect = document.getElementById('challengeBoardSelect');
+  const randomizeGapsCheckbox = document.getElementById('randomizeGapsCheckbox');
   const challengeStartBtn = document.getElementById('challengeStartBtn');
   const challengeCancelBtn = document.getElementById('challengeCancelBtn');
   const dailyChallengeBtn = document.getElementById('dailyChallengeBtn');
@@ -145,20 +167,18 @@
     }
   }
 
-  // State
-  let grid; // 2D array: null=gaps; or {type:'small'|'big', id, ox, oy}
-  let smallTiles = []; // {id, x,y, homeX,homeY, el}
-  let bigTiles = [];   // {id, x,y, homeX,homeY, el} x,y are top-left
-  let tileById = new Map();
-  // gaps carry identity (to keep their default crop) and current pos
-  let gaps = []; // [{id:'G0'|'G1', x,y, homeX,homeY}]
-  let selectedGapIdx = 0;
+  // State - Unified piece system
+  // All pieces (including gaps) stored in a single array
+  let grid; // 2D array: null=empty; or {type:'small'|'big'|'gap', id, ox, oy}
+  let pieces = []; // Unified array: {id, type, isGap, x, y, homeX, homeY, el, innerEl, selected}
+  let pieceById = new Map(); // Unified lookup map
 
   // Game mode state
   let gameMode = 'freeplay'; // 'freeplay' or 'challenge'
   let challengeSeed = null;
   let challengeSteps = null;
   let challengeBoard = null; // Board slug for challenge
+  let challengeRandomizeGaps = false; // Flag to randomize gap positions during shuffle
   let challengeMoveCount = 0;
   let isShuffling = false; // Flag to prevent move counting during shuffle
   let challengeSolved = false; // Flag to track if challenge is solved
@@ -174,16 +194,6 @@
   let autoFitEnabled = false;
   let boardSizeScale = 100; // Board size percentage (50-200%)
   let challengeAbove = false; // Challenge box position: false = right side, true = above board
-
-  // Gap marker DOM (wrapper + inner gap element for each identity)
-  const gapWrappers = [document.createElement('div'), document.createElement('div')];
-  const gapEls = [document.createElement('div'), document.createElement('div')];
-  gapWrappers.forEach((wrapper, i) => {
-    wrapper.className = 'gap-wrapper';
-    gapEls[i].className = 'gap';
-    wrapper.appendChild(gapEls[i]);
-    boardEl.appendChild(wrapper);
-  });
 
   // Helper function to determine which background image a tile should use
   function getBackgroundImageForPosition(x, y) {
@@ -272,10 +282,56 @@
     return `calc(${-homeX} * var(--tile)) calc(${-homeY} * var(--tile))`;
   }
 
+  /**
+   * Helper function to create a piece (tile or gap)
+   * @param {string} type - 'small', 'big', or 'gap'
+   * @param {string} id - Piece ID
+   * @param {number} x - X position
+   * @param {number} y - Y position
+   * @returns {Object} Piece object
+   */
+  function createPiece(type, id, x, y) {
+    const isGap = (type === 'gap');
+    const el = document.createElement('div');
+    let innerEl = null;
+    
+    if (isGap) {
+      // Gap: create wrapper + inner element
+      el.className = 'gap-wrapper';
+      innerEl = document.createElement('div');
+      innerEl.className = 'gap';
+      el.appendChild(innerEl);
+    } else {
+      // Regular piece
+      el.className = `tile ${type}`;
+    }
+    
+    // Set background on appropriate element
+    const bgEl = isGap ? innerEl : el;
+    const { image, bgSize } = getBackgroundStyleForTile(x, y);
+    bgEl.style.backgroundImage = `url("${image}")`;
+    bgEl.style.backgroundSize = bgSize;
+    bgEl.style.backgroundPosition = getBackgroundPositionCalc(x, y);
+    
+    boardEl.appendChild(el);
+    
+    return {
+      id,
+      type,
+      isGap,
+      x,
+      y,
+      homeX: x,
+      homeY: y,
+      el,
+      innerEl,
+      selected: false
+    };
+  }
+
   function initTiles() {
-    smallTiles = [];
-    bigTiles = [];
-    tileById.clear();
+    pieces = [];
+    pieceById.clear();
 
     // Make a quick mask for big home coverage
     const covered = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(false));
@@ -286,68 +342,60 @@
         }
       }
     });
-    // Create big tiles first
+    
+    // Create big pieces first
     boardConfig.largePieces.forEach((home, i) => {
-      const id = `B${i}`;
-      const el = document.createElement('div');
-      el.className = 'tile big';
-      
-      // Set background image and position based on tile's home position
-      const { image, bgSize } = getBackgroundStyleForTile(home.x, home.y);
-      el.style.backgroundImage = `url("${image}")`;
-      el.style.backgroundSize = bgSize;
-      // Use calc() for position so it updates automatically when --tile changes
-      el.style.backgroundPosition = getBackgroundPositionCalc(home.x, home.y);
-      
-      boardEl.appendChild(el);
-      const t = { id, x: home.x, y: home.y, homeX: home.x, homeY: home.y, el };
-      bigTiles.push(t);
-      tileById.set(id, t);
+      const piece = createPiece('big', `B${i}`, home.x, home.y);
+      pieces.push(piece);
+      pieceById.set(piece.id, piece);
     });
 
-    // Create small tiles on cells not covered by bigs and not default gaps
-    const isDefaultGap = (x,y) => boardConfig.gapPositions.some(g => g.x===x && g.y===y);
+    // Create small pieces AND gaps
+    const isGapIdentity = (x,y) => boardConfig.gapIdentities.some(g => g.x===x && g.y===y);
     let sIdx = 0;
+    let gIdx = 0;
     for(let y=0; y<boardConfig.height; y++){
       for(let x=0; x<boardConfig.width; x++){
         if(covered[y][x]) continue;
-        if(isDefaultGap(x,y)) continue;
-        const id = `S${sIdx++}`;
-        const el = document.createElement('div');
-        el.className = 'tile small';
         
-        // Set background image and position based on tile's home position
-        const { image, bgSize } = getBackgroundStyleForTile(x, y);
-        el.style.backgroundImage = `url("${image}")`;
-        el.style.backgroundSize = bgSize;
-        // Use calc() for position so it updates automatically when --tile changes
-        el.style.backgroundPosition = getBackgroundPositionCalc(x, y);
+        const isGap = isGapIdentity(x,y);
+        const type = isGap ? 'gap' : 'small';
+        const id = isGap ? `G${gIdx++}` : `S${sIdx++}`;
         
-        boardEl.appendChild(el);
-        const t = { id, x, y, homeX: x, homeY: y, el };
-        smallTiles.push(t);
-        tileById.set(id, t);
+        const piece = createPiece(type, id, x, y);
+        pieces.push(piece);
+        pieceById.set(piece.id, piece);
       }
     }
+    
+    // Set first gap as selected
+    const firstGap = pieces.find(p => p.isGap);
+    if (firstGap) firstGap.selected = true;
   }
 
   function buildGridFromState() {
     grid = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(null));
-    // Place big tiles
-    for (const t of bigTiles) {
-      for(let dy=0; dy<2; dy++){
-        for(let dx=0; dx<2; dx++){
-          grid[t.y+dy][t.x+dx] = { type:'big', id: t.id, ox: dx, oy: dy };
+    
+    for (const piece of pieces) {
+      if (piece.type === 'big') {
+        // Big piece occupies 2×2 cells
+        for(let dy=0; dy<2; dy++) {
+          for(let dx=0; dx<2; dx++) {
+            grid[piece.y+dy][piece.x+dx] = {
+              type: 'big',
+              id: piece.id,
+              ox: dx,
+              oy: dy
+            };
+          }
         }
+      } else {
+        // Small piece or gap occupies 1 cell
+        grid[piece.y][piece.x] = {
+          type: piece.type,  // 'small' or 'gap'
+          id: piece.id
+        };
       }
-    }
-    // Place small tiles
-    for (const t of smallTiles) {
-      grid[t.y][t.x] = { type:'small', id: t.id };
-    }
-    // Carve gaps (null) last
-    for (const g of gaps) {
-      grid[g.y][g.x] = null;
     }
   }
 
@@ -372,31 +420,189 @@
     applyBoardSize();
   }
 
+  /**
+   * Reset puzzle to solved state.
+   * All pieces return to their home positions.
+   */
   function resetState() {
-    // Remove any previous tile DOM (will be re-added in initTiles)
-    boardEl.querySelectorAll('.tile').forEach(el => el.remove());
+    // Remove any previous piece DOM (will be re-added in initTiles)
+    boardEl.querySelectorAll('.tile, .gap-wrapper').forEach(el => el.remove());
     initTiles();
 
-    // Initialize gaps with identity and home crop
-    gaps = boardConfig.gapPositions.map((gapPos, i) => ({
-      id: `G${i}`,
-      x: gapPos.x,
-      y: gapPos.y,
-      homeX: gapPos.x,
-      homeY: gapPos.y
-    }));
-    // Fix their background cropping based on home, once
-    gapEls.forEach((el, i) => {
-      const { image, bgSize } = getBackgroundStyleForTile(gaps[i].homeX, gaps[i].homeY);
-      el.style.backgroundImage = `url("${image}")`;
-      el.style.backgroundSize = bgSize;
-      // Use calc() for position so it updates automatically when --tile changes
-      el.style.backgroundPosition = getBackgroundPositionCalc(gaps[i].homeX, gaps[i].homeY);
-    });
-
-    selectedGapIdx = 0;
     buildGridFromState();
     renderAll();
+  }
+
+  function resetGapIdentities() {
+    // Find pieces that should be gaps based on board configuration
+    // and toggle their isGap flag without moving anything
+    
+    // First, convert all current gaps to regular pieces
+    const currentGaps = pieces.filter(p => p.isGap);
+    for (const piece of currentGaps) {
+      // Convert gap to tile - keep identity and position
+      piece.isGap = false;
+      piece.type = 'small';
+      
+      // Update DOM structure: replace gap-wrapper with tile
+      const newEl = document.createElement('div');
+      newEl.className = 'tile small';
+      
+      // Use existing identity for background (homeX, homeY unchanged)
+      const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+      newEl.style.backgroundImage = `url("${image}")`;
+      newEl.style.backgroundSize = bgSize;
+      newEl.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+      
+      // Replace in DOM
+      piece.el.parentNode.replaceChild(newEl, piece.el);
+      piece.el = newEl;
+      piece.innerEl = null;
+      piece.selected = false;
+    }
+    
+    // Now find pieces with the original gap identities and convert them to gaps
+    const newGapPieces = [];
+    for (const gapIdentity of boardConfig.gapIdentities) {
+      // Find the piece with this identity (homeX, homeY)
+      const piece = pieces.find(p =>
+        p.homeX === gapIdentity.x &&
+        p.homeY === gapIdentity.y &&
+        (p.type === 'small' || p.type === 'gap')
+      );
+      
+      if (piece) {
+        newGapPieces.push(piece);
+      }
+    }
+    
+    // Convert selected pieces to gaps - keep their identities and positions
+    for (const piece of newGapPieces) {
+      // Convert tile to gap - keep identity and position
+      piece.isGap = true;
+      piece.type = 'gap';
+      
+      // Update DOM structure: replace tile with gap-wrapper
+      const newEl = document.createElement('div');
+      newEl.className = 'gap-wrapper';
+      const innerEl = document.createElement('div');
+      innerEl.className = 'gap';
+      newEl.appendChild(innerEl);
+      
+      // Use existing identity for background (homeX, homeY unchanged)
+      const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+      innerEl.style.backgroundImage = `url("${image}")`;
+      innerEl.style.backgroundSize = bgSize;
+      innerEl.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+      
+      // Replace in DOM
+      piece.el.parentNode.replaceChild(newEl, piece.el);
+      piece.el = newEl;
+      piece.innerEl = innerEl;
+      piece.selected = false;
+    }
+    
+    // Select first gap
+    if (newGapPieces.length > 0) {
+      newGapPieces[0].selected = true;
+    }
+    
+    // Rebuild grid with new gap positions
+    buildGridFromState();
+    renderAll();
+  }
+
+  /**
+   * Shared function to randomize which pieces act as gaps.
+   * Toggles isGap flag on pieces to convert between gaps and tiles.
+   * @param {Function} randomInt - Random integer function (for seeded or unseeded randomness)
+   */
+  function performGapRandomization(randomInt) {
+    const numGaps = boardConfig.gapIdentities.length;
+
+    // Filter small pieces only (current gaps and small tiles)
+    const smallPieces = pieces.filter(p => p.type === 'small' || p.type === 'gap');
+    
+    // Randomly select which pieces should be gaps
+    const shuffled = [...smallPieces];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const newGapPieces = shuffled.slice(0, numGaps);
+    
+    // Convert all small pieces to regular tiles first
+    for (const piece of smallPieces) {
+      if (piece.isGap) {
+        // Convert gap to tile - keep identity (homeX, homeY)
+        piece.isGap = false;
+        piece.type = 'small';
+        
+        // Update DOM structure: replace gap-wrapper with tile
+        const newEl = document.createElement('div');
+        newEl.className = 'tile small';
+        
+        // Use existing identity for background (homeX, homeY unchanged)
+        const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+        newEl.style.backgroundImage = `url("${image}")`;
+        newEl.style.backgroundSize = bgSize;
+        newEl.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+        
+        // Replace in DOM
+        piece.el.parentNode.replaceChild(newEl, piece.el);
+        piece.el = newEl;
+        piece.innerEl = null;
+        piece.selected = false;
+      }
+    }
+    
+    // Convert selected pieces to gaps - keep their identities
+    for (const piece of newGapPieces) {
+      // Convert tile to gap - keep identity (homeX, homeY)
+      piece.isGap = true;
+      piece.type = 'gap';
+      
+      // DO NOT change homeX/homeY - pieces keep their identities
+      
+      // Update DOM structure: replace tile with gap-wrapper
+      const newEl = document.createElement('div');
+      newEl.className = 'gap-wrapper';
+      const innerEl = document.createElement('div');
+      innerEl.className = 'gap';
+      newEl.appendChild(innerEl);
+      
+      // Use existing identity for background (homeX, homeY unchanged)
+      const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+      innerEl.style.backgroundImage = `url("${image}")`;
+      innerEl.style.backgroundSize = bgSize;
+      innerEl.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+      
+      // Replace in DOM
+      piece.el.parentNode.replaceChild(newEl, piece.el);
+      piece.el = newEl;
+      piece.innerEl = innerEl;
+      piece.selected = false;
+    }
+    
+    // Select first gap
+    if (newGapPieces.length > 0) {
+      newGapPieces[0].selected = true;
+    }
+
+    // Rebuild grid with new gap positions
+    buildGridFromState();
+    renderAll();
+  }
+
+  /**
+   * Randomize which cells act as gaps by selecting new positions and
+   * assigning them new identities based on those positions.
+   * This converts current gaps to tiles and selected tiles to gaps.
+   */
+  function randomizeGapIdentities() {
+    // Use unseeded random number generator
+    const randomInt = (max) => Math.floor(Math.random() * max);
+    performGapRandomization(randomInt);
   }
 
   function updateUIForMode() {
@@ -409,7 +615,7 @@
       challengeSeedDisplay.textContent = challengeSeed;
       challengeStepsDisplay.textContent = challengeSteps;
       challengeMovesDisplay.textContent = challengeMoveCount;
-      resetBtn.textContent = 'Reset Challenge';
+      resetBtn.textContent = 'Restart';
       // Update Give Up button text based on solved state
       giveUpBtn.textContent = challengeSolved ? 'Free Play' : 'Give Up';
     } else {
@@ -531,15 +737,21 @@
     const url = new URL(window.location);
     
     if (gameMode === 'challenge' && challengeSeed !== null && challengeSteps !== null) {
-      // Challenge mode: add seed, steps, and board parameters
+      // Challenge mode: add seed, steps, board, and randomizeGaps parameters
       url.searchParams.set('seed', challengeSeed);
       url.searchParams.set('steps', challengeSteps);
       url.searchParams.set('board', challengeBoard || currentBoardSlug);
+      if (challengeRandomizeGaps) {
+        url.searchParams.set('randomizeGaps', 'true');
+      } else {
+        url.searchParams.delete('randomizeGaps');
+      }
     } else {
       // Free Play mode: remove challenge parameters
       url.searchParams.delete('seed');
       url.searchParams.delete('steps');
       url.searchParams.delete('board');
+      url.searchParams.delete('randomizeGaps');
     }
     
     // Update URL without reloading the page
@@ -551,6 +763,7 @@
     challengeSeed = null;
     challengeSteps = null;
     challengeBoard = null;
+    challengeRandomizeGaps = false;
     challengeMoveCount = 0;
     challengeSolved = false;
     stopTimer();
@@ -565,11 +778,12 @@
     }
   }
 
-  async function startChallenge(seed, steps, boardSlug = null) {
+  async function startChallenge(seed, steps, boardSlug = null, randomizeGaps = false) {
     gameMode = 'challenge';
     challengeSeed = seed;
     challengeSteps = steps;
     challengeBoard = boardSlug || currentBoardSlug;
+    challengeRandomizeGaps = randomizeGaps;
     challengeMoveCount = 0;
     challengeSolved = false;
     
@@ -592,24 +806,19 @@
     // Reset to solved state first
     resetState();
     
-    // Then shuffle with the challenge seed
-    await shuffle(steps, seed);
+    // Then shuffle with the challenge seed and randomize flag
+    await shuffle(steps, seed, randomizeGaps);
     
     // Start timer after shuffle completes
     startTimer();
   }
 
   function checkWinCondition() {
-    // Check if all tiles are in their home positions
-    for (const t of smallTiles) {
-      if (t.x !== t.homeX || t.y !== t.homeY) return false;
-    }
-    for (const t of bigTiles) {
-      if (t.x !== t.homeX || t.y !== t.homeY) return false;
-    }
-    // Also check gaps are in default positions
-    for (let i = 0; i < gaps.length; i++) {
-      if (gaps[i].x !== boardConfig.gapPositions[i].x || gaps[i].y !== boardConfig.gapPositions[i].y) return false;
+    // Check if all pieces (including gaps) are in their home positions
+    for (const piece of pieces) {
+      if (piece.x !== piece.homeX || piece.y !== piece.homeY) {
+        return false;
+      }
     }
     return true;
   }
@@ -632,33 +841,25 @@
   }
 
   function renderAll() {
-    // Position tiles
-    for (const t of smallTiles) {
-      t.el.style.left = `${t.x*tilePx}px`;
-      t.el.style.top  = `${t.y*tilePx}px`;
-    }
-    for (const t of bigTiles) {
-      t.el.style.left = `${t.x*tilePx}px`;
-      t.el.style.top  = `${t.y*tilePx}px`;
-    }
-    renderGaps();
-  }
-
-  function renderGaps() {
-    gaps.forEach((g,i) => {
-      const wrapper = gapWrappers[i];
-      wrapper.style.left = `${g.x*tilePx}px`;
-      wrapper.style.top  = `${g.y*tilePx}px`;
-      // Don't show selection if challenge is solved
-      if (gameMode === 'challenge' && challengeSolved) {
-        wrapper.classList.remove('selected');
-      } else {
-        wrapper.classList.toggle('selected', i === selectedGapIdx);
+    for (const piece of pieces) {
+      // Position element
+      piece.el.style.left = `${piece.x * tilePx}px`;
+      piece.el.style.top = `${piece.y * tilePx}px`;
+      
+      // Update selection visual (for gaps only)
+      if (piece.isGap) {
+        const showSelection = piece.selected && !(gameMode === 'challenge' && challengeSolved);
+        piece.el.classList.toggle('selected', showSelection);
       }
-    });
+    }
   }
 
-  function tryMove(dir) {
+  // Helper function for backward compatibility - just calls renderAll
+  function renderGaps() {
+    renderAll();
+  }
+
+  function tryMove(dir, cachedGapPieces = null) {
     // Prevent moves if challenge is solved or timer is paused
     if (gameMode === 'challenge' && (challengeSolved || timerPaused)) {
       return false;
@@ -674,25 +875,37 @@
     // For gap swapping: To swap with a gap to the RIGHT, call tryMove('left')!
     // When implementing swipe/drag controls, always REVERSE the direction.
     
+    // Get selected gap
+    const selectedGap = pieces.find(p => p.isGap && p.selected);
+    if (!selectedGap) return false;
+    
     // dir: 'up'|'down'|'left'|'right'
-    const g = gaps[selectedGapIdx];
-    let fromX = g.x, fromY = g.y, dx = 0, dy = 0;
-    if (dir === 'up') { fromY = g.y + 1; fromX = g.x; dx = 0; dy = -1; }
-    if (dir === 'down') { fromY = g.y - 1; fromX = g.x; dx = 0; dy = 1; }
-    if (dir === 'left') { fromX = g.x + 1; fromY = g.y; dx = -1; dy = 0; }
-    if (dir === 'right'){ fromX = g.x - 1; fromY = g.y; dx = 1; dy = 0; }
+    let fromX = selectedGap.x, fromY = selectedGap.y, dx = 0, dy = 0;
+    if (dir === 'up') { fromY = selectedGap.y + 1; fromX = selectedGap.x; dx = 0; dy = -1; }
+    if (dir === 'down') { fromY = selectedGap.y - 1; fromX = selectedGap.x; dx = 0; dy = 1; }
+    if (dir === 'left') { fromX = selectedGap.x + 1; fromY = selectedGap.y; dx = -1; dy = 0; }
+    if (dir === 'right'){ fromX = selectedGap.x - 1; fromY = selectedGap.y; dx = 1; dy = 0; }
 
     if (fromX < 0 || fromX >= boardConfig.width || fromY < 0 || fromY >= boardConfig.height) return false;
 
-    // If adjacent cell is the other gap, swap the gaps
-    const otherIdx = 1 - selectedGapIdx;
-    if (gaps[otherIdx].x === fromX && gaps[otherIdx].y === fromY) {
-      const tmp = { x:g.x, y:g.y };
-      g.x = gaps[otherIdx].x; g.y = gaps[otherIdx].y;
-      gaps[otherIdx].x = tmp.x; gaps[otherIdx].y = tmp.y;
-      // Selection stays on the gap identity that moved
-      buildGridFromState();
-      renderGaps();
+    const sourceCell = grid[fromY][fromX];
+    if (!sourceCell) return false;
+    
+    // Determine if we should skip rendering (during shuffle in Challenge Mode)
+    const skipRender = isShuffling && gameMode === 'challenge';
+    
+    // Check if source is another gap (gap swap)
+    if (sourceCell.type === 'gap') {
+      const otherGap = pieceById.get(sourceCell.id);
+      // Swap positions
+      [selectedGap.x, selectedGap.y, otherGap.x, otherGap.y] =
+        [otherGap.x, otherGap.y, selectedGap.x, selectedGap.y];
+      
+      // Incremental grid update: just swap the two cells
+      grid[selectedGap.y][selectedGap.x] = { type: 'gap', id: selectedGap.id };
+      grid[otherGap.y][otherGap.x] = { type: 'gap', id: otherGap.id };
+      
+      if (!skipRender) renderAll();
       if (gameMode === 'challenge' && !isShuffling) {
         challengeMoveCount++;
         updateMoveCount();
@@ -703,25 +916,24 @@
       return true;
     }
 
-    const occ = grid[fromY][fromX];
-    if (!occ) return false;
+    // Regular piece movement (small or big)
+    const movingPiece = pieceById.get(sourceCell.id);
+    if (!movingPiece) return false;
 
-    if (occ.type === 'small') {
-      // Move small tile into the selected gap, and move that gap to the tile's former spot
-      const t = tileById.get(occ.id);
+    if (movingPiece.type === 'small') {
+      // Move small piece into the selected gap
+      movingPiece.x += dx;
+      movingPiece.y += dy;
 
-      // Update tile position
-      t.x += dx; t.y += dy;
+      // Move selected gap to the freed cell
+      selectedGap.x = fromX;
+      selectedGap.y = fromY;
 
-      // Move selected gap identity to the freed cell (tile's former position)
-      g.x = fromX; g.y = fromY;
-
-      // Rebuild grid and render (keeps selection on the moved gap, i.e., the newly created gap)
-      buildGridFromState();
-      // DOM updates
-      t.el.style.left = `${t.x*tilePx}px`;
-      t.el.style.top  = `${t.y*tilePx}px`;
-      renderGaps();
+      // Incremental grid update: swap the two cells
+      grid[movingPiece.y][movingPiece.x] = { type: 'small', id: movingPiece.id };
+      grid[selectedGap.y][selectedGap.x] = { type: 'gap', id: selectedGap.id };
+      
+      if (!skipRender) renderAll();
       if (gameMode === 'challenge' && !isShuffling) {
         challengeMoveCount++;
         updateMoveCount();
@@ -732,69 +944,91 @@
       return true;
     }
 
-    if (occ.type === 'big') {
-      const t = tileById.get(occ.id);
+    if (movingPiece.type === 'big') {
       // Determine destination face cells (must be both gaps), and freed cells after move
       let dest = [], freed = [];
       if (dx === 1) { // right
-        if (t.x + 2 >= boardConfig.width) return false;
-        dest = [{x:t.x+2, y:t.y}, {x:t.x+2, y:t.y+1}];
-        freed = [{x:t.x, y:t.y}, {x:t.x, y:t.y+1}];
+        if (movingPiece.x + 2 >= boardConfig.width) return false;
+        dest = [{x:movingPiece.x+2, y:movingPiece.y}, {x:movingPiece.x+2, y:movingPiece.y+1}];
+        freed = [{x:movingPiece.x, y:movingPiece.y}, {x:movingPiece.x, y:movingPiece.y+1}];
       } else if (dx === -1) { // left
-        if (t.x - 1 < 0) return false;
-        dest = [{x:t.x-1, y:t.y}, {x:t.x-1, y:t.y+1}];
-        freed = [{x:t.x+1, y:t.y}, {x:t.x+1, y:t.y+1}];
+        if (movingPiece.x - 1 < 0) return false;
+        dest = [{x:movingPiece.x-1, y:movingPiece.y}, {x:movingPiece.x-1, y:movingPiece.y+1}];
+        freed = [{x:movingPiece.x+1, y:movingPiece.y}, {x:movingPiece.x+1, y:movingPiece.y+1}];
       } else if (dy === 1) { // down
-        if (t.y + 2 >= boardConfig.height) return false;
-        dest = [{x:t.x, y:t.y+2}, {x:t.x+1, y:t.y+2}];
-        freed = [{x:t.x, y:t.y}, {x:t.x+1, y:t.y}];
+        if (movingPiece.y + 2 >= boardConfig.height) return false;
+        dest = [{x:movingPiece.x, y:movingPiece.y+2}, {x:movingPiece.x+1, y:movingPiece.y+2}];
+        freed = [{x:movingPiece.x, y:movingPiece.y}, {x:movingPiece.x+1, y:movingPiece.y}];
       } else if (dy === -1) { // up
-        if (t.y - 1 < 0) return false;
-        dest = [{x:t.x, y:t.y-1}, {x:t.x+1, y:t.y-1}];
-        freed = [{x:t.x, y:t.y+1}, {x:t.x+1, y:t.y+1}];
+        if (movingPiece.y - 1 < 0) return false;
+        dest = [{x:movingPiece.x, y:movingPiece.y-1}, {x:movingPiece.x+1, y:movingPiece.y-1}];
+        freed = [{x:movingPiece.x, y:movingPiece.y+1}, {x:movingPiece.x+1, y:movingPiece.y+1}];
       }
 
       // Both dest must be gaps, and the selected gap must be one of them
-      const destAreGaps = dest.every(d => grid[d.y][d.x] === null);
-      const selectedIsDest = dest.some(d => d.x === g.x && d.y === g.y);
+      const destAreGaps = dest.every(d => grid[d.y][d.x]?.type === 'gap');
+      const selectedIsDest = dest.some(d => d.x === selectedGap.x && d.y === selectedGap.y);
       if (!(destAreGaps && selectedIsDest)) return false;
 
-      // Map which gap is at which dest, then move each gap to the corresponding freed cell
-      // Keep gaps aligned by row/col so it behaves like a swap with the piece face
-      const gapIdxAt = (c) => (gaps[0].x===c.x && gaps[0].y===c.y) ? 0 : (gaps[1].x===c.x && gaps[1].y===c.y) ? 1 : -1;
+      // Find which gaps are at destination cells
+      const gapPieces = cachedGapPieces || pieces.filter(p => p.isGap);
+      const gapAt = (c) => gapPieces.find(g => g.x === c.x && g.y === c.y);
+      
       const map = [];
       if (dx !== 0) {
         // Align by y
         for (const d of dest) {
-          const gi = gapIdxAt(d);
-          if (gi === -1) return false;
+          const gap = gapAt(d);
+          if (!gap) return false;
           const target = freed.find(f => f.y === d.y);
-          map.push({ gi, target });
+          map.push({ gap, target });
         }
       } else {
         // dy !== 0, align by x
         for (const d of dest) {
-          const gi = gapIdxAt(d);
-          if (gi === -1) return false;
+          const gap = gapAt(d);
+          if (!gap) return false;
           const target = freed.find(f => f.x === d.x);
-          map.push({ gi, target });
+          map.push({ gap, target });
         }
       }
+      
       // Move the piece
-      t.x += dx; t.y += dy;
+      const oldPieceX = movingPiece.x;
+      const oldPieceY = movingPiece.y;
+      movingPiece.x += dx;
+      movingPiece.y += dy;
 
-      // Move each gap identity to its mapped freed cell
-      for (const {gi, target} of map) {
-        gaps[gi].x = target.x;
-        gaps[gi].y = target.y;
+      // Move each gap to its mapped freed cell
+      for (const {gap, target} of map) {
+        gap.x = target.x;
+        gap.y = target.y;
       }
 
-      // Keep selection on the same gap identity; it's now one of the freed cells
-      buildGridFromState();
-      // DOM updates
-      t.el.style.left = `${t.x*tilePx}px`;
-      t.el.style.top  = `${t.y*tilePx}px`;
-      renderGaps();
+      // Incremental grid update for big piece move
+      // Clear old 2×2 area
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          grid[oldPieceY + dy][oldPieceX + dx] = null;
+        }
+      }
+      // Set new 2×2 area
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          grid[movingPiece.y + dy][movingPiece.x + dx] = {
+            type: 'big',
+            id: movingPiece.id,
+            ox: dx,
+            oy: dy
+          };
+        }
+      }
+      // Update gap positions in grid
+      for (const {gap} of map) {
+        grid[gap.y][gap.x] = { type: 'gap', id: gap.id };
+      }
+      
+      if (!skipRender) renderAll();
       if (gameMode === 'challenge' && !isShuffling) {
         challengeMoveCount++;
         updateMoveCount();
@@ -808,43 +1042,54 @@
     return false;
   }
 
-  function enumerateValidMoves() {
+  function enumerateValidMoves(gapPieces) {
     const moves = [];
-    const dirs = ['up','down','left','right'];
-    for (let gi=0; gi<2; gi++) {
-      const g = gaps[gi];
-      for (const dir of dirs) {
-        let fromX = g.x, fromY = g.y, dx = 0, dy = 0;
-        if (dir === 'up') { fromY = g.y + 1; fromX = g.x; dx = 0; dy = -1; }
-        if (dir === 'down') { fromY = g.y - 1; fromX = g.x; dx = 0; dy = 1; }
-        if (dir === 'left') { fromX = g.x + 1; fromY = g.y; dx = -1; dy = 0; }
-        if (dir === 'right'){ fromX = g.x - 1; fromY = g.y; dx = 1; dy = 0; }
+    
+    for (const gap of gapPieces) {
+      for (const dir of ['up','down','left','right']) {
+        let fromX = gap.x, fromY = gap.y;
+        if (dir === 'up') fromY = gap.y + 1;
+        if (dir === 'down') fromY = gap.y - 1;
+        if (dir === 'left') fromX = gap.x + 1;
+        if (dir === 'right') fromX = gap.x - 1;
         if (fromX < 0 || fromX >= boardConfig.width || fromY < 0 || fromY >= boardConfig.height) continue;
-
-        // gap-gap swap allowed
-        const otherIdx = 1 - gi;
-        if (gaps[otherIdx].x === fromX && gaps[otherIdx].y === fromY) {
-          moves.push({gapIdx: gi, dir, isBig: false, isGapSwap: true});
-          continue;
-        }
-
+        
         const occ = grid[fromY][fromX];
         if (!occ) continue;
-
+        
+        // Check if it's a gap swap
+        const isGapSwap = (occ.type === 'gap');
+        
         if (occ.type === 'small') {
-          moves.push({gapIdx: gi, dir, isBig: false, isGapSwap: false});
-          continue;
-        }
-        if (occ.type === 'big') {
-          const t = tileById.get(occ.id);
-          const dest = [];
-          if (dx === 1) { if (t.x + 2 >= boardConfig.width) continue; dest.push({x:t.x+2, y:t.y},{x:t.x+2,y:t.y+1}); }
-          if (dx === -1){ if (t.x - 1 < 0) continue; dest.push({x:t.x-1, y:t.y},{x:t.x-1,y:t.y+1}); }
-          if (dy === 1) { if (t.y + 2 >= boardConfig.height) continue; dest.push({x:t.x, y:t.y+2},{x:t.x+1,y:t.y+2}); }
-          if (dy === -1){ if (t.y - 1 < 0) continue; dest.push({x:t.x, y:t.y-1},{x:t.x+1,y:t.y-1}); }
-          const bothNull = dest.every(c => grid[c.y][c.x] === null);
-          const selectedIsDest = dest.some(c => c.x === g.x && c.y === g.y);
-          if (bothNull && selectedIsDest) moves.push({gapIdx: gi, dir, isBig: true, isGapSwap: false});
+          moves.push({ gap, dir, isBig: false, isGapSwap: false });
+        } else if (occ.type === 'big') {
+          const piece = pieceById.get(occ.id);
+          let dx = 0, dy = 0;
+          if (dir === 'up') dy = -1;
+          if (dir === 'down') dy = 1;
+          if (dir === 'left') dx = -1;
+          if (dir === 'right') dx = 1;
+          let dest = [];
+          if (dx === 1) {
+            if (piece.x + 2 >= boardConfig.width) continue;
+            dest = [{x:piece.x+2, y:piece.y}, {x:piece.x+2, y:piece.y+1}];
+          } else if (dx === -1) {
+            if (piece.x - 1 < 0) continue;
+            dest = [{x:piece.x-1, y:piece.y}, {x:piece.x-1, y:piece.y+1}];
+          } else if (dy === 1) {
+            if (piece.y + 2 >= boardConfig.height) continue;
+            dest = [{x:piece.x, y:piece.y+2}, {x:piece.x+1, y:piece.y+2}];
+          } else if (dy === -1) {
+            if (piece.y - 1 < 0) continue;
+            dest = [{x:piece.x, y:piece.y-1}, {x:piece.x+1, y:piece.y-1}];
+          }
+          const destAreGaps = dest.every(d => grid[d.y][d.x]?.type === 'gap');
+          const selectedIsDest = dest.some(d => d.x === gap.x && d.y === gap.y);
+          if (destAreGaps && selectedIsDest) {
+            moves.push({ gap, dir, isBig: true, isGapSwap: false });
+          }
+        } else if (isGapSwap) {
+          moves.push({ gap, dir, isBig: false, isGapSwap: true });
         }
       }
     }
@@ -895,18 +1140,19 @@
    * Encourages moves that bring gaps closer together as urgency builds
    * @param {Object} move - Move object with gapIdx and dir
    * @param {number} urgency - Current urgency factor (0 to 1)
+   * @param {Array} gapPieces - Cached array of gap pieces
    * @returns {number} Weight multiplier for this move
    */
-  function calculateDistanceWeight(move, urgency) {
-    if (move.isGapSwap || move.isBig || gaps.length < 2) {
+  function calculateDistanceWeight(move, urgency, gapPieces) {
+    if (move.isGapSwap || move.isBig || gapPieces.length < 2) {
       return 1.0; // Don't apply heuristic to gap swaps, big piece moves, or single gap
     }
     
     // Calculate current distance between gaps
-    const currentDistance = gapDistance(gaps[0], gaps[1]);
+    const currentDistance = gapDistance(gapPieces[0], gapPieces[1]);
     
     // Predict where the moving gap will be after this move
-    const movingGap = gaps[move.gapIdx];
+    const movingGap = move.gap;
     let newX = movingGap.x;
     let newY = movingGap.y;
     
@@ -918,7 +1164,9 @@
     if (move.dir === 'right') newX--; // Gap moves left
     
     // Calculate distance after move
-    const otherGap = gaps[1 - move.gapIdx];
+    const otherGap = gapPieces.find(g => g !== movingGap);
+    if (!otherGap) return 1.0;
+    
     const newDistance = Math.abs(newX - otherGap.x) + Math.abs(newY - otherGap.y);
     
     // Determine if move brings gaps closer or pushes them further
@@ -943,15 +1191,16 @@
   function calculateShuffleScore() {
     let totalDistance = 0;
     
-    for (const tile of bigTiles) {
-      const manhattanDistance = Math.abs(tile.x - tile.homeX) + Math.abs(tile.y - tile.homeY);
+    const bigPieces = pieces.filter(p => p.type === 'big');
+    for (const piece of bigPieces) {
+      const manhattanDistance = Math.abs(piece.x - piece.homeX) + Math.abs(piece.y - piece.homeY);
       totalDistance += manhattanDistance;
     }
     
     return totalDistance;
   }
   
-  async function shuffle(steps, seed = null) {
+  async function shuffle(steps, seed = null, randomizeGaps = false) {
     shuffleBtn.disabled = true; resetBtn.disabled = true; challengeBtn.disabled = true;
     isShuffling = true; // Set flag to prevent move counting
     
@@ -972,11 +1221,20 @@
     const random = () => rng ? rng.next() : Math.random();
     const randomInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max);
     
+    // If randomizeGaps is enabled, use the shared gap randomization function
+    if (randomizeGaps) {
+      performGapRandomization(randomInt);
+    }
+    
     let lastMove = null; // Remember last move to avoid immediate reversal
     let movesSinceLastBigPiece = 0; // Track moves since last large piece moved (adaptive urgency)
+    
+    // Cache gap pieces once at the start to avoid repeated filtering
+    let cachedGapPieces = pieces.filter(p => p.isGap);
+    
     try {
       for (let i=0; i<steps; i++) {
-        const moves = enumerateValidMoves();
+        const moves = enumerateValidMoves(cachedGapPieces);
         if (moves.length === 0) break;
         
         // Filter out the reverse of the last move if there are other options
@@ -990,7 +1248,7 @@
           };
           const reverse = reverseDir[lastMove.dir];
           const nonReverseMoves = moves.filter(m =>
-            !(m.gapIdx === lastMove.gapIdx && m.dir === reverse)
+            !(m.gap === lastMove.gap && m.dir === reverse)
           );
           // Only use filtered moves if there are alternatives
           if (nonReverseMoves.length > 0) {
@@ -1033,7 +1291,7 @@
             
             // Apply distance-based weighting (encourages gaps to move closer as urgency builds)
             if (DISTANCE_INFLUENCE > 0) {
-              const distanceWeight = calculateDistanceWeight(move, urgency);
+              const distanceWeight = calculateDistanceWeight(move, urgency, cachedGapPieces);
               weight *= distanceWeight;
             }
             
@@ -1056,8 +1314,12 @@
         }
         
         const m = weightedMoves[randomInt(weightedMoves.length)];
-        selectedGapIdx = m.gapIdx;
-        tryMove(m.dir);
+        
+        // Select the gap for this move
+        pieces.forEach(p => p.selected = false);
+        m.gap.selected = true;
+        
+        tryMove(m.dir, cachedGapPieces);
         lastMove = m; // Remember this move for next iteration
         
         // Update urgency tracker
@@ -1080,8 +1342,15 @@
       }
       
       // Randomly select one of the gaps to hide which was used last
-      selectedGapIdx = randomInt(2);
-      renderGaps();
+      // Reuse cached gap pieces if available, otherwise filter
+      const gapPieces = cachedGapPieces;
+      if (gapPieces.length > 0) {
+        const randomGapIdx = randomInt(gapPieces.length);
+        pieces.forEach(p => p.selected = false);
+        gapPieces[randomGapIdx].selected = true;
+      }
+      buildGridFromState();
+      renderAll();
       
       isShuffling = false; // Clear flag after shuffle completes
       shuffleBtn.disabled = false; resetBtn.disabled = false; challengeBtn.disabled = false;
@@ -1100,8 +1369,15 @@
       if (gameMode === 'challenge' && (challengeSolved || timerPaused)) {
         return;
       }
-      selectedGapIdx = 1 - selectedGapIdx;
-      renderGaps();
+      // Toggle selection between gaps
+      const gapPieces = pieces.filter(p => p.isGap);
+      const currentlySelected = gapPieces.find(g => g.selected);
+      if (currentlySelected && gapPieces.length > 1) {
+        const currentIdx = gapPieces.indexOf(currentlySelected);
+        const nextIdx = (currentIdx + 1) % gapPieces.length;
+        gapPieces.forEach((g, i) => g.selected = (i === nextIdx));
+        renderAll();
+      }
       return;
     }
     const keyMap = {
@@ -1145,32 +1421,20 @@
   /**
    * Find which gaps are adjacent to given cells and in which direction
    * @param {Array} cells - Array of {x, y} cell coordinates to check
-   * @param {Array} gaps - The gaps array
-   * @returns {Object} {gap0: {adjacent, dx, dy}, gap1: {adjacent, dx, dy}}
+   * @returns {Array} Array of {gap, dx, dy} for each adjacent gap
    */
-  function findAdjacentGaps(cells, gaps) {
-    const result = {
-      gap0: {adjacent: false, dx: 0, dy: 0},
-      gap1: {adjacent: false, dx: 0, dy: 0}
-    };
+  function findAdjacentGaps(cells) {
+    const gapPieces = pieces.filter(p => p.isGap);
+    const result = [];
     
-    for (const cell of cells) {
-      // Check gap 0
-      const dx0 = gaps[0].x - cell.x;
-      const dy0 = gaps[0].y - cell.y;
-      if ((Math.abs(dx0) === 1 && dy0 === 0) || (dx0 === 0 && Math.abs(dy0) === 1)) {
-        result.gap0.adjacent = true;
-        result.gap0.dx = dx0;
-        result.gap0.dy = dy0;
-      }
-      
-      // Check gap 1
-      const dx1 = gaps[1].x - cell.x;
-      const dy1 = gaps[1].y - cell.y;
-      if ((Math.abs(dx1) === 1 && dy1 === 0) || (dx1 === 0 && Math.abs(dy1) === 1)) {
-        result.gap1.adjacent = true;
-        result.gap1.dx = dx1;
-        result.gap1.dy = dy1;
+    for (const gap of gapPieces) {
+      for (const cell of cells) {
+        const dx = gap.x - cell.x;
+        const dy = gap.y - cell.y;
+        if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
+          result.push({ gap, dx, dy });
+          break; // Only add each gap once
+        }
       }
     }
     
@@ -1316,15 +1580,20 @@
     mouseDownPos = { x: pos.x, y: pos.y };
     mouseDownTime = Date.now();
     mouseDownGridPos = { x: gridX, y: gridY };
-    mouseDownSelectedGapIdx = selectedGapIdx; // Store which gap was selected before this pointer down
+    
+    // Store which gap was selected before this pointer down
+    const selectedGap = pieces.find(p => p.isGap && p.selected);
+    mouseDownSelectedGapIdx = selectedGap ? pieces.filter(p => p.isGap).indexOf(selectedGap) : 0;
+    
     lastDragGapPos = null; // Reset drag tracking for new drag session
     dragControlUsed = false; // Reset drag control flag for new drag session
     
     // Check if we clicked on a gap and select it
-    const clickedGapIdx = gaps.findIndex(g => g.x === gridX && g.y === gridY);
-    if (clickedGapIdx !== -1) {
-      selectedGapIdx = clickedGapIdx;
-      renderGaps();
+    const clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+    if (clickedGap) {
+      pieces.forEach(p => p.selected = false);
+      clickedGap.selected = true;
+      renderAll();
     }
   }
 
@@ -1363,7 +1632,8 @@
     const currentGridY = Math.floor(currentY / tilePx);
     
     // Check if we started on a gap
-    const startedOnGap = grid[mouseDownGridPos.y][mouseDownGridPos.x] === null;
+    const startCell = grid[mouseDownGridPos.y][mouseDownGridPos.x];
+    const startedOnGap = startCell?.type === 'gap';
     
     if (startedOnGap) {
       // GAP DRAG CONTROL: Started on a gap, check if we're over a piece or the other gap
@@ -1371,12 +1641,13 @@
         const currentCell = grid[currentGridY][currentGridX];
         
         // Check if we're over the other gap
-        const startGapIdx = gaps.findIndex(g => g.x === mouseDownGridPos.x && g.y === mouseDownGridPos.y);
-        if (startGapIdx === -1) return; // Safety check
-        const otherGapIdx = 1 - startGapIdx;
-        const otherGap = gaps[otherGapIdx];
+        const startGap = pieces.find(p => p.isGap && p.x === mouseDownGridPos.x && p.y === mouseDownGridPos.y);
+        if (!startGap) return; // Safety check
         
-        if (currentCell === null && otherGap && otherGap.x === currentGridX && otherGap.y === currentGridY) {
+        const gapPieces = pieces.filter(p => p.isGap);
+        const otherGap = gapPieces.find(g => g !== startGap);
+        
+        if (currentCell?.type === 'gap' && otherGap && otherGap.x === currentGridX && otherGap.y === currentGridY) {
           // We're over the other gap - check if it's adjacent
           const dx = currentGridX - mouseDownGridPos.x;
           const dy = currentGridY - mouseDownGridPos.y;
@@ -1402,7 +1673,10 @@
                     swipePreviewOffset = { x: 0, y: 0 };
                   }
                   // Update mouseDownGridPos to the new gap position after the swap
-                  mouseDownGridPos = { x: gaps[selectedGapIdx].x, y: gaps[selectedGapIdx].y };
+                  const selectedGap = pieces.find(p => p.isGap && p.selected);
+                  if (selectedGap) {
+                    mouseDownGridPos = { x: selectedGap.x, y: selectedGap.y };
+                  }
                 }
               }
             }
@@ -1412,10 +1686,10 @@
           const cellX = currentX - (currentGridX * tilePx);
           const cellY = currentY - (currentGridY * tilePx);
           
-          const tile = tileById.get(currentCell.id);
-          if (tile) {
+          const piece = pieceById.get(currentCell.id);
+          if (piece) {
             // Get cells to check for adjacency
-            const cellsToCheck = getCellsForTile(tile, currentCell, currentGridX, currentGridY);
+            const cellsToCheck = getCellsForTile(piece, currentCell, currentGridX, currentGridY);
             
             // Find if piece is adjacent to gap and check valid drag region
             let isAdjacent = false;
@@ -1453,7 +1727,10 @@
                     swipePreviewOffset = { x: 0, y: 0 };
                   }
                   // Update mouseDownGridPos to the new gap position after the move
-                  mouseDownGridPos = { x: gaps[selectedGapIdx].x, y: gaps[selectedGapIdx].y };
+                  const selectedGap = pieces.find(p => p.isGap && p.selected);
+                  if (selectedGap) {
+                    mouseDownGridPos = { x: selectedGap.x, y: selectedGap.y };
+                  }
                 }
               }
             }
@@ -1465,17 +1742,17 @@
       if (currentGridX >= 0 && currentGridX < boardConfig.width && currentGridY >= 0 && currentGridY < boardConfig.height) {
         const currentCell = grid[currentGridY][currentGridX];
         
-        if (currentCell === null) {
+        if (currentCell?.type === 'gap') {
           // We're over a gap - check if it's in the valid drag region
           const cellX = currentX - (currentGridX * tilePx);
           const cellY = currentY - (currentGridY * tilePx);
           
           const clickedCell = grid[mouseDownGridPos.y][mouseDownGridPos.x];
           if (clickedCell) {
-            const tile = tileById.get(clickedCell.id);
-            if (tile) {
+            const piece = pieceById.get(clickedCell.id);
+            if (piece) {
               // Get cells to check for adjacency
-              const cellsToCheck = getCellsForTile(tile, clickedCell, mouseDownGridPos.x, mouseDownGridPos.y);
+              const cellsToCheck = getCellsForTile(piece, clickedCell, mouseDownGridPos.x, mouseDownGridPos.y);
               
               // Find if gap is adjacent to piece and check valid drag region
               let isAdjacent = false;
@@ -1496,14 +1773,15 @@
               }
               
               if (isAdjacent && adjacentDir) {
-                const gapPosKey = `${currentGridX},${currentGridY}`;
-                
-                // Only trigger move if this is a different gap than the last one we dragged over
-                if (lastDragGapPos !== gapPosKey) {
-                  const gapIdx = gaps.findIndex(g => g.x === currentGridX && g.y === currentGridY);
-                  if (gapIdx !== -1) {
-                    selectedGapIdx = gapIdx;
-                    const moveSuccess = tryMove(adjacentDir);
+               const gapPosKey = `${currentGridX},${currentGridY}`;
+               
+               // Only trigger move if this is a different gap than the last one we dragged over
+               if (lastDragGapPos !== gapPosKey) {
+                 const gap = pieces.find(p => p.isGap && p.x === currentGridX && p.y === currentGridY);
+                 if (gap) {
+                   pieces.forEach(p => p.selected = false);
+                   gap.selected = true;
+                   const moveSuccess = tryMove(adjacentDir);
                     
                     if (moveSuccess) {
                       dragControlUsed = true;
@@ -1535,7 +1813,7 @@
         const gridY = mouseDownGridPos.y;
         const clickedCell = grid[gridY][gridX];
 
-        if (!clickedCell) {
+        if (!clickedCell || clickedCell.type === 'gap') {
           // Swiping on a gap - check for adjacent piece or other gap
           let targetX = gridX, targetY = gridY;
           if (swipeDir === 'right') targetX++;
@@ -1547,10 +1825,10 @@
             const targetCell = grid[targetY][targetX];
             
             // Check if target is the other gap
-            const clickedGapIdx = gaps.findIndex(g => g.x === gridX && g.y === gridY);
-            const otherGapIdx = 1 - clickedGapIdx;
-            const otherGap = gaps[otherGapIdx];
-            const isOtherGap = (targetCell === null && otherGap && otherGap.x === targetX && otherGap.y === targetY);
+            const clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+            const gapPieces = pieces.filter(p => p.isGap);
+            const otherGap = gapPieces.find(g => g !== clickedGap);
+            const isOtherGap = (targetCell?.type === 'gap' && otherGap && otherGap.x === targetX && otherGap.y === targetY);
             
             if (isOtherGap) {
               // No preview for gap swaps
@@ -1560,11 +1838,11 @@
                 swipePreviewTile = null;
                 swipePreviewOffset = { x: 0, y: 0 };
               }
-            } else if (targetCell) {
+            } else if (targetCell && targetCell.type !== 'gap') {
               // Show preview for piece moving into gap
-              const tile = tileById.get(targetCell.id);
-              if (tile) {
-                if (swipePreviewActive && swipePreviewTile && swipePreviewTile !== tile) {
+              const piece = pieceById.get(targetCell.id);
+              if (piece) {
+                if (swipePreviewActive && swipePreviewTile && swipePreviewTile !== piece) {
                   swipePreviewTile.el.style.transform = '';
                 }
                 
@@ -1578,9 +1856,9 @@
                 if (swipeDir === 'up') offsetY = previewOffset;
                 
                 swipePreviewActive = true;
-                swipePreviewTile = tile;
+                swipePreviewTile = piece;
                 swipePreviewOffset = { x: offsetX, y: offsetY };
-                tile.el.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+                piece.el.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
               }
             } else {
               // Clear preview if no valid target
@@ -1596,14 +1874,14 @@
         }
 
         // Swiping on a piece
-        const tile = tileById.get(clickedCell.id);
-        if (!tile) return;
+        const piece = pieceById.get(clickedCell.id);
+        if (!piece) return;
 
-        const cellsToCheck = getCellsForTile(tile, clickedCell, gridX, gridY);
+        const cellsToCheck = getCellsForTile(piece, clickedCell, gridX, gridY);
         
-        // Check if either gap is in swipe direction
-        const validSwipe = isGapInSwipeDirection(cellsToCheck, gaps[selectedGapIdx], swipeDir) ||
-                          isGapInSwipeDirection(cellsToCheck, gaps[1 - selectedGapIdx], swipeDir);
+        // Check if any gap is in swipe direction
+        const gapPieces = pieces.filter(p => p.isGap);
+        const validSwipe = gapPieces.some(gap => isGapInSwipeDirection(cellsToCheck, gap, swipeDir));
 
         if (validSwipe) {
           const previewOffset = 15;
@@ -1614,13 +1892,13 @@
           if (swipeDir === 'down') offsetY = previewOffset;
           if (swipeDir === 'up') offsetY = -previewOffset;
 
-          if (!swipePreviewActive || swipePreviewTile !== tile) {
+          if (!swipePreviewActive || swipePreviewTile !== piece) {
             swipePreviewActive = true;
-            swipePreviewTile = tile;
+            swipePreviewTile = piece;
           }
 
           swipePreviewOffset = { x: offsetX, y: offsetY };
-          tile.el.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+          piece.el.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
         } else {
           // Clear preview if swipe is invalid
           if (swipePreviewActive && swipePreviewTile) {
@@ -1702,7 +1980,9 @@
     const gridY = mouseDownGridPos.y;
 
     // Check if clicked on a gap
-    const clickedGapIdx = gaps.findIndex(g => g.x === gridX && g.y === gridY);
+    const clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+    const gapPieces = pieces.filter(p => p.isGap);
+    const clickedGapIdx = clickedGap ? gapPieces.indexOf(clickedGap) : -1;
     
     // Store whether this gap was already selected BEFORE mousedown changed it
     const wasAlreadySelected = (mouseDownSelectedGapIdx === clickedGapIdx);
@@ -1715,16 +1995,18 @@
     lastDragGapPos = null;
     dragControlUsed = false;
 
-    if (clickedGapIdx !== -1) {
+    if (clickedGap) {
       // Clicked on a gap
       
       if (swipeDir) {
         // Swipe detected - handle swipe behavior
-        selectedGapIdx = clickedGapIdx;
+        pieces.forEach(p => p.selected = false);
+        clickedGap.selected = true;
         
-        // Check if the other gap is adjacent in the swipe direction
-        const otherGapIdx = 1 - clickedGapIdx;
-        const otherGap = gaps[otherGapIdx];
+        // Check if another gap is adjacent in the swipe direction
+        const otherGap = gapPieces.find(g => g !== clickedGap);
+        if (!otherGap) return;
+        
         const dx = otherGap.x - gridX;
         const dy = otherGap.y - gridY;
         
@@ -1758,26 +2040,16 @@
       if (wasAlreadySelected) {
         // Gap was already selected - only swap if exactly one gap is adjacent (unambiguous)
         // Count how many gaps are adjacent to this gap
-        let adjacentGapCount = 0;
-        let adjacentGapIdx = -1;
-        
-        for (let i = 0; i < gaps.length; i++) {
-          if (i === clickedGapIdx) continue; // Skip self
-          
-          const otherGap = gaps[i];
-          const dx = otherGap.x - gridX;
-          const dy = otherGap.y - gridY;
-          
-          // Check if this gap is adjacent
-          if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-            adjacentGapCount++;
-            adjacentGapIdx = i;
-          }
-        }
+        const adjacentGaps = gapPieces.filter(g => {
+          if (g === clickedGap) return false; // Skip self
+          const dx = g.x - gridX;
+          const dy = g.y - gridY;
+          return (Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1);
+        });
         
         // Only swap if exactly one gap is adjacent (unambiguous)
-        if (adjacentGapCount === 1) {
-          const otherGap = gaps[adjacentGapIdx];
+        if (adjacentGaps.length === 1) {
+          const otherGap = adjacentGaps[0];
           const dx = otherGap.x - gridX;
           const dy = otherGap.y - gridY;
           
@@ -1796,8 +2068,9 @@
         return;
       } else {
         // Gap was not selected - just select it
-        selectedGapIdx = clickedGapIdx;
-        renderGaps();
+        pieces.forEach(p => p.selected = false);
+        clickedGap.selected = true;
+        renderAll();
         return;
       }
     }
@@ -1806,64 +2079,59 @@
     const clickedCell = grid[gridY][gridX];
     if (!clickedCell) return; // No piece at clicked position
     
-    const tile = tileById.get(clickedCell.id);
-    if (!tile) return;
+    const piece = pieceById.get(clickedCell.id);
+    if (!piece) return;
     
     // Get cells to check for adjacency
-    const cellsToCheck = getCellsForTile(tile, clickedCell, gridX, gridY);
+    const cellsToCheck = getCellsForTile(piece, clickedCell, gridX, gridY);
     
     // Find which gaps are adjacent
-    const adjacency = findAdjacentGaps(cellsToCheck, gaps);
+    const adjacentGaps = findAdjacentGaps(cellsToCheck);
     
     // Determine which gap to use
-    let targetGapIdx = -1;
+    let targetGap = null;
     let targetDx = 0, targetDy = 0;
 
     if (swipeDir) {
       // Swipe detected - use gap in swipe direction
-      if (adjacency.gap0.adjacent && isGapInSwipeDirection(cellsToCheck, gaps[0], swipeDir)) {
-        targetGapIdx = 0;
-        targetDx = adjacency.gap0.dx;
-        targetDy = adjacency.gap0.dy;
-      } else if (adjacency.gap1.adjacent && isGapInSwipeDirection(cellsToCheck, gaps[1], swipeDir)) {
-        targetGapIdx = 1;
-        targetDx = adjacency.gap1.dx;
-        targetDy = adjacency.gap1.dy;
-      } else {
-        return; // Swipe doesn't match any adjacent gap
+      for (const {gap, dx, dy} of adjacentGaps) {
+        if (isGapInSwipeDirection(cellsToCheck, gap, swipeDir)) {
+          targetGap = gap;
+          targetDx = dx;
+          targetDy = dy;
+          break;
+        }
       }
+      if (!targetGap) return; // Swipe doesn't match any adjacent gap
     } else {
       // Click - use adjacency logic
-      const adjacentCount = (adjacency.gap0.adjacent ? 1 : 0) + (adjacency.gap1.adjacent ? 1 : 0);
-
-      if (adjacentCount === 0) {
+      if (adjacentGaps.length === 0) {
         return; // No adjacent gaps
-      } else if (adjacentCount === 1) {
+      } else if (adjacentGaps.length === 1) {
         // Use the only adjacent gap
-        if (adjacency.gap0.adjacent) {
-          targetGapIdx = 0;
-          targetDx = adjacency.gap0.dx;
-          targetDy = adjacency.gap0.dy;
-        } else {
-          targetGapIdx = 1;
-          targetDx = adjacency.gap1.dx;
-          targetDy = adjacency.gap1.dy;
-        }
+        targetGap = adjacentGaps[0].gap;
+        targetDx = adjacentGaps[0].dx;
+        targetDy = adjacentGaps[0].dy;
       } else {
-        // Both gaps adjacent - use selected gap
-        targetGapIdx = selectedGapIdx;
-        if (targetGapIdx === 0) {
-          targetDx = adjacency.gap0.dx;
-          targetDy = adjacency.gap0.dy;
+        // Multiple gaps adjacent - use selected gap
+        const selectedGap = pieces.find(p => p.isGap && p.selected);
+        const selectedAdj = adjacentGaps.find(a => a.gap === selectedGap);
+        if (selectedAdj) {
+          targetGap = selectedAdj.gap;
+          targetDx = selectedAdj.dx;
+          targetDy = selectedAdj.dy;
         } else {
-          targetDx = adjacency.gap1.dx;
-          targetDy = adjacency.gap1.dy;
+          // Selected gap not adjacent, use first adjacent gap
+          targetGap = adjacentGaps[0].gap;
+          targetDx = adjacentGaps[0].dx;
+          targetDy = adjacentGaps[0].dy;
         }
       }
     }
     
     // Execute the move
-    selectedGapIdx = targetGapIdx;
+    pieces.forEach(p => p.selected = false);
+    targetGap.selected = true;
     const dir = vectorToDirection(targetDx, targetDy, false);
     if (dir) {
       tryMove(dir);
@@ -1895,15 +2163,15 @@
 
   resetBtn.addEventListener('click', () => {
     if (gameMode === 'challenge') {
-      // In challenge mode, reset recreates the challenge
-      startChallenge(challengeSeed, challengeSteps, challengeBoard);
+      // In challenge mode, reset recreates the challenge with the same randomizeGaps setting
+      startChallenge(challengeSeed, challengeSteps, challengeBoard, challengeRandomizeGaps);
     } else {
       // In free play mode, reset returns to solved state
       resetState();
     }
   });
   
-  shuffleBtn.addEventListener('click', () => shuffle(250));
+  shuffleBtn.addEventListener('click', () => shuffle(250, null, false));
   
   giveUpBtn.addEventListener('click', () => {
     switchToFreePlay();
@@ -1994,6 +2262,15 @@
     }
   });
 
+  // Gap control button handlers
+  resetGapsBtn.addEventListener('click', () => {
+    resetGapIdentities();
+  });
+
+  randomizeGapsBtn.addEventListener('click', () => {
+    randomizeGapIdentities();
+  });
+
   // Challenge dialog handlers
   challengeBtn.addEventListener('click', () => {
     // Set current board in dropdown
@@ -2030,6 +2307,7 @@
     const seedValue = seedInput.value.trim();
     const steps = parseInt(stepsInput.value) || 250;
     const boardSlug = challengeBoardSelect.value;
+    const randomizeGaps = randomizeGapsCheckbox.checked;
     
     // Close dialog
     challengeDialog.style.display = 'none';
@@ -2047,7 +2325,7 @@
     }
     
     // Start the challenge
-    await startChallenge(seed, steps, boardSlug);
+    await startChallenge(seed, steps, boardSlug, randomizeGaps);
     
     boardEl.focus();
   });
@@ -2361,6 +2639,7 @@
     const seedParam = urlParams.get('seed');
     const stepsParam = urlParams.get('steps');
     const boardParam = urlParams.get('board');
+    const randomizeGapsParam = urlParams.get('randomizeGaps');
     
     // Only auto-start if both seed and steps parameters exist and are non-empty
     if (seedParam !== null && seedParam.trim() !== '' &&
@@ -2368,12 +2647,13 @@
       const seed = parseInt(seedParam);
       const steps = parseInt(stepsParam) || 250;
       const boardSlug = boardParam && boardRegistry[boardParam] ? boardParam : 'default';
+      const randomizeGaps = randomizeGapsParam === 'true';
       
-      console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}, board=${boardSlug}`);
+      console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}, board=${boardSlug}, randomizeGaps=${randomizeGaps}`);
       
       // Start challenge after initialization
       setTimeout(async () => {
-        await startChallenge(seed, steps, boardSlug);
+        await startChallenge(seed, steps, boardSlug, randomizeGaps);
         boardEl.focus();
       }, 0);
     }

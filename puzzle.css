@@ -489,6 +489,18 @@ body.challenge-above .challenge-stat-value {
   font-weight: 600;
 }
 
+.gap-control-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.gap-control-buttons .btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.95rem;
+}
+
 .difficulty-presets {
   display: flex;
   gap: 6px;
