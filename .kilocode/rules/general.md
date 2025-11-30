@@ -140,10 +140,10 @@ Gaps are not just empty spaces—they are entities with persistent identity that
 #### Button Controls
 - **Reset Button**: Return to solved state (Free Play) or recreate challenge (Challenge Mode)
 - **Shuffle Button**: Randomize board with 250 valid moves (Free Play only)
-- **Settings Button** (⚙): Change board size with reset warning (Free Play only)
-- **Display Button** (☀): Opens display settings dialog for theme, auto-scaling, and board size
+- **Edit Board Button**: Change board size with reset warning (Free Play only)
 - **New Challenge Button**: Start a new challenge with custom or random seed and board selection
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
+- **Display Button** (⚙): Opens display settings dialog for theme, auto-scaling, and board size
 - **Help Button** (?): Opens controls reference dialog
 
 ### Movement Rules
@@ -172,11 +172,11 @@ The toolbar uses flexbox layout with two groups:
 - **`.toolbar-left`**: Left-aligned button group containing:
   - Reset button
   - Shuffle button (hidden in Challenge Mode)
+  - Edit Board button - Opens board selection dialog (hidden in Challenge Mode)
   - New Challenge button
   - Give Up button (shown only in Challenge Mode)
 - **`.toolbar-right`**: Right-aligned button group containing:
-  - Settings button (⚙) - Opens board selection dialog (hidden in Challenge Mode)
-  - Display button (☀) - Opens display settings dialog
+  - Display button (⚙) - Opens display settings dialog
   - Help button (?) - Opens controls reference dialog
   
 The toolbar spans the full window width with left and right button groups positioned at opposite ends using flexbox `space-between`.
@@ -769,7 +769,7 @@ Challenge Mode includes automatic win detection:
 The game includes a unified display settings dialog accessed via the sun icon (☀) in the toolbar:
 
 ### Display Settings Dialog
-- **Display Button**: Sun icon (☀) in right toolbar group
+- **Display Button**: Cog icon (⚙) in right toolbar group
 - **Settings Include**:
   - **Dark theme**: Checkbox to toggle between light and dark modes
   - **Challenge box above board**: Checkbox to position challenge info box above the board instead of to the right
@@ -985,13 +985,13 @@ For screens 600px wide or smaller, dialogs automatically adapt for better mobile
 - Returns focus to board when closed
 
 ### Settings Dialog
-- Opened by "Settings" button (⚙) in Free Play mode only
+- Opened by "Edit Board" button in Free Play mode only
 - Contains:
   - Board selection dropdown with three options:
     - Default (8×8)
     - Horizontal (16×8)
     - Vertical (8×16)
-  - Warning message: "Changing the board will reset the puzzle to its solved state"
+  - Warning message: "Changing the board shape will reset the puzzle to its solved state"
   - Apply button
   - Cancel button
 - Enter key applies changes
@@ -1019,7 +1019,7 @@ For screens 600px wide or smaller, dialogs automatically adapt for better mobile
 - Only accepts numeric seeds for deterministic LCG behavior
 
 ### Display Settings Dialog
-- Opened by "Display" button (☀) in toolbar
+- Opened by "Display" button (⚙) in toolbar
 - Contains:
   - Dark theme checkbox - Toggles dark mode instantly
   - Auto-scale checkbox - Enables automatic board resizing, disables size slider when active

@@ -253,6 +253,7 @@ body.challenge-above .challenge-stat-value {
   will-change: left, top, transform;
   transition: left 80ms ease, top 80ms ease, transform 150ms ease;
   border-radius: 0;
+  z-index: 1;
 }
 
 /* Disable transitions when shuffling in Challenge Mode */
@@ -274,6 +275,7 @@ body.challenge-above .challenge-stat-value {
   width: var(--tile);
   height: var(--tile);
   pointer-events: none;
+  z-index: 0;
 }
 .gap-wrapper.selected::before {
   /* bright selection ring - rendered outside the filtered content */
@@ -479,8 +481,8 @@ body.challenge-above .challenge-stat-value {
 .settings-warning {
   margin-top: 16px;
   padding: 12px;
-  background: rgba(255, 200, 100, 0.1);
-  border-left: 3px solid rgb(255, 180, 80);
+  background: rgba(100, 200, 255, 0.1);
+  border-left: 3px solid rgb(100, 200, 255);
   font-size: 0.9rem;
   line-height: 1.5;
 }
@@ -690,8 +692,8 @@ body.dark-mode .form-group select:focus {
 }
 
 body.dark-mode .settings-warning {
-  background: rgba(255, 200, 100, 0.1);
-  border-color: rgba(255, 180, 80, 0.5);
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.25);
 }
 
 body.dark-mode .preset-btn {

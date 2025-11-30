@@ -1879,9 +1879,48 @@
 
         const cellsToCheck = getCellsForTile(piece, clickedCell, gridX, gridY);
         
-        // Check if any gap is in swipe direction
-        const gapPieces = pieces.filter(p => p.isGap);
-        const validSwipe = gapPieces.some(gap => isGapInSwipeDirection(cellsToCheck, gap, swipeDir));
+        // Check if move would be valid
+        let validSwipe = false;
+        
+        if (piece.type === 'small') {
+          // For small pieces, just check if any gap is in swipe direction
+          const gapPieces = pieces.filter(p => p.isGap);
+          validSwipe = gapPieces.some(gap => isGapInSwipeDirection(cellsToCheck, gap, swipeDir));
+        } else if (piece.type === 'big') {
+          // For big pieces, need to verify BOTH destination cells are gaps
+          // Calculate destination cells based on swipe direction
+          let dx = 0, dy = 0;
+          if (swipeDir === 'right') dx = 1;
+          else if (swipeDir === 'left') dx = -1;
+          else if (swipeDir === 'down') dy = 1;
+          else if (swipeDir === 'up') dy = -1;
+          
+          // Calculate destination face cells
+          let destCells = [];
+          if (dx === 1) { // right
+            if (piece.x + 2 < boardConfig.width) {
+              destCells = [{x: piece.x + 2, y: piece.y}, {x: piece.x + 2, y: piece.y + 1}];
+            }
+          } else if (dx === -1) { // left
+            if (piece.x - 1 >= 0) {
+              destCells = [{x: piece.x - 1, y: piece.y}, {x: piece.x - 1, y: piece.y + 1}];
+            }
+          } else if (dy === 1) { // down
+            if (piece.y + 2 < boardConfig.height) {
+              destCells = [{x: piece.x, y: piece.y + 2}, {x: piece.x + 1, y: piece.y + 2}];
+            }
+          } else if (dy === -1) { // up
+            if (piece.y - 1 >= 0) {
+              destCells = [{x: piece.x, y: piece.y - 1}, {x: piece.x + 1, y: piece.y - 1}];
+            }
+          }
+          
+          // Check if both destination cells are gaps
+          if (destCells.length === 2) {
+            const destAreGaps = destCells.every(d => grid[d.y][d.x]?.type === 'gap');
+            validSwipe = destAreGaps;
+          }
+        }
 
         if (validSwipe) {
           const previewOffset = 15;
@@ -1971,6 +2010,13 @@
     // Get pointer position
     const pos = getEventPosition(e);
     
+    // Check if mouse moved during the click
+    const CLICK_MOVEMENT_THRESHOLD = 1.5; // pixels
+    const dx = pos.x - mouseDownPos.x;
+    const dy = pos.y - mouseDownPos.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const mouseMoved = distance >= CLICK_MOVEMENT_THRESHOLD;
+    
     // Only process swipe/click logic if drag control wasn't used
     const SWIPE_THRESHOLD = 5;
     const swipeDir = detectSwipeDirection(mouseDownPos, pos, SWIPE_THRESHOLD);
@@ -2036,8 +2082,8 @@
         }
       }
       
-      // No swipe detected - handle click behavior
-      if (wasAlreadySelected) {
+      // No swipe detected - handle click behavior only if mouse didn't move
+      if (!mouseMoved && wasAlreadySelected) {
         // Gap was already selected - only swap if exactly one gap is adjacent (unambiguous)
         // Count how many gaps are adjacent to this gap
         const adjacentGaps = gapPieces.filter(g => {
@@ -2066,11 +2112,14 @@
         }
         // If 0 or 2+ adjacent gaps, do nothing (ambiguous or impossible)
         return;
-      } else {
-        // Gap was not selected - just select it
+      } else if (!mouseMoved) {
+        // Gap was not selected - just select it (only if mouse didn't move)
         pieces.forEach(p => p.selected = false);
         clickedGap.selected = true;
         renderAll();
+        return;
+      } else {
+        // Mouse moved, don't process as click
         return;
       }
     }
@@ -2103,8 +2152,8 @@
         }
       }
       if (!targetGap) return; // Swipe doesn't match any adjacent gap
-    } else {
-      // Click - use adjacency logic
+    } else if (!mouseMoved) {
+      // Click (mouse didn't move) - use adjacency logic
       if (adjacentGaps.length === 0) {
         return; // No adjacent gaps
       } else if (adjacentGaps.length === 1) {
@@ -2127,6 +2176,9 @@
           targetDy = adjacentGaps[0].dy;
         }
       }
+    } else {
+      // Mouse moved, don't process as click
+      return;
     }
     
     // Execute the move

@@ -26,10 +26,10 @@ A browser-based slide puzzle game featuring mixed-size pieces and dual-gap mecha
 ### Buttons
 - **Reset**: Return to solved state (Free Play) or restart challenge
 - **Shuffle**: Randomize the puzzle (Free Play only)
-- **Settings**: Change board size (Free Play only)
-- **Display** (☀): Adjust theme, auto-scaling, and board size
+- **Edit Board**: Change board shape and gaps (Free Play only)
 - **New Challenge**: Start a seeded puzzle with move tracking
 - **Give Up**: Return to Free Play mode (Challenge Mode only)
+- **Display** (⚙): Adjust theme, auto-scaling, and board size
 - **Help** (?): View all controls
 
 ## Challenge Mode

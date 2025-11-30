@@ -11,12 +11,12 @@
     <div class="toolbar-left">
       <button id="resetBtn" class="btn">Reset</button>
       <button id="shuffleBtn" class="btn">Shuffle</button>
+      <button id="settingsBtn" class="btn">Edit Board</button>
       <button id="challengeBtn" class="btn">New Challenge</button>
       <button id="giveUpBtn" class="btn" style="display: none;">Give Up</button>
     </div>
     <div class="toolbar-right">
-      <button id="settingsBtn" class="btn btn-icon" aria-label="Settings" title="Settings" style="display: inline-block;">⚙</button>
-      <button id="displayBtn" class="btn btn-icon" aria-label="Display settings" title="Display settings">☀</button>
+      <button id="displayBtn" class="btn btn-icon" aria-label="Display settings" title="Display settings">⚙</button>
       <button id="helpBtn" class="btn btn-icon" aria-label="Help" title="Show controls">?</button>
     </div>
   </div>
@@ -79,10 +79,10 @@
   <!-- Settings Dialog -->
   <div id="settingsDialog" class="dialog-overlay" style="display: none;">
     <div class="dialog">
-      <h2>Settings</h2>
+      <h2>Board Settings</h2>
       <div class="dialog-content">
         <div class="form-group">
-          <label for="settingsBoardSelect">Board:</label>
+          <label for="settingsBoardSelect">Board Shape:</label>
           <select id="settingsBoardSelect" class="board-select">
             <option value="default">Default (8×8)</option>
             <option value="horizontal">Horizontal (16×8)</option>
@@ -97,12 +97,12 @@
           </div>
         </div>
         <div class="settings-warning">
-          <strong>Note:</strong> Changing the board will reset the puzzle to its solved state.
+          <strong>Note:</strong> Changing the board shape will reset the puzzle to its solved state.
         </div>
       </div>
       <div class="dialog-buttons">
-        <button id="settingsApplyBtn" class="btn btn-primary">Apply</button>
-        <button id="settingsCancelBtn" class="btn">Cancel</button>
+        <button id="settingsApplyBtn" class="btn btn-primary">Apply Board Shape</button>
+        <button id="settingsCancelBtn" class="btn">Close</button>
       </div>
     </div>
   </div>
