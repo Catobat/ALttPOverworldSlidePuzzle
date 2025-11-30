@@ -706,15 +706,22 @@
     if (!timerPaused && timerStartTime !== null) {
       const currentTime = Date.now();
       const elapsed = Math.floor((currentTime - timerStartTime + timerElapsedTime) / 1000);
-      if (!timerHidden) {
-        challengeTimerDisplay.textContent = formatTime(elapsed);
-      }
+      // Always update the display content, even when hidden
+      // This ensures the correct time is shown when visibility changes or challenge completes
+      challengeTimerDisplay.textContent = formatTime(elapsed);
     }
   }
 
   function startTimer() {
     if (gameMode !== 'challenge') return;
     
+    // Clear any existing interval first
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    
+    // Reset timer state
     timerStartTime = Date.now();
     timerElapsedTime = 0;
     timerPaused = false;
@@ -723,6 +730,7 @@
     const savedTimerHidden = localStorage.getItem('timerHidden') === 'true';
     timerHidden = savedTimerHidden;
     
+    // Update display
     challengeTimerDisplay.textContent = '0:00';
     if (timerHidden) {
       challengeTimerDisplay.style.display = 'none';
@@ -732,11 +740,12 @@
       timerShowBtn.style.display = 'none';
     }
     
+    // Update pause button
     timerToggleBtn.textContent = '⏸';
     timerToggleBtn.setAttribute('aria-label', 'Pause timer');
     timerToggleBtn.setAttribute('title', 'Pause');
     
-    if (timerInterval) clearInterval(timerInterval);
+    // Create interval - this runs regardless of visibility
     timerInterval = setInterval(updateTimer, 100);
   }
 
@@ -921,6 +930,7 @@
     // Show custom congratulations dialog
     congratsMessage.textContent = `You solved the challenge in ${challengeMoveCount} moves and with a time of ${finalTime}!`;
     congratsDialog.style.display = 'flex';
+    congratsOkBtn.focus(); // Focus OK button for keyboard controls
   }
 
   function renderAll() {
