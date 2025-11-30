@@ -269,6 +269,11 @@ body.challenge-above .challenge-stat-value {
   width: calc(2 * var(--tile));
   height: calc(2 * var(--tile));
 }
+.tile.big-cell {
+  /* Individual cell of a wrapped large piece */
+  width: var(--tile);
+  height: var(--tile);
+}
 
 .gap-wrapper {
   position: absolute;

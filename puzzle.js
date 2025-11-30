@@ -41,7 +41,9 @@
       {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
       {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
       {x: 0, y: 6}, {x: 5, y: 6}
-    ]
+    ],
+    wrapHorizontal: false,  // Enable horizontal wrapping
+    wrapVertical: false     // Enable vertical wrapping
   };
   
   const horizontalBoard = {
@@ -64,7 +66,9 @@
       {x: 8, y: 0}, {x: 11, y: 0}, {x: 13, y: 0},
       {x: 8, y: 3}, {x: 11, y: 3}, {x: 14, y: 3},
       {x: 8, y: 6}, {x: 13, y: 6}
-    ]
+    ],
+    wrapHorizontal: false,  // Enable horizontal wrapping
+    wrapVertical: false     // Enable vertical wrapping
   };
   
   const verticalBoard = {
@@ -87,7 +91,9 @@
       {x: 0, y: 8}, {x: 3, y: 8}, {x: 5, y: 8},
       {x: 0, y: 11}, {x: 3, y: 11}, {x: 6, y: 11},
       {x: 0, y: 14}, {x: 5, y: 14}
-    ]
+    ],
+    wrapHorizontal: false,  // Enable horizontal wrapping
+    wrapVertical: false     // Enable vertical wrapping
   };
   
   // Board registry for easy lookup
@@ -116,6 +122,8 @@
   const settingsCancelBtn = document.getElementById('settingsCancelBtn');
   const resetGapsBtn = document.getElementById('resetGapsBtn');
   const randomizeGapsBtn = document.getElementById('randomizeGapsBtn');
+  const wrapHorizontalCheckbox = document.getElementById('wrapHorizontalCheckbox');
+  const wrapVerticalCheckbox = document.getElementById('wrapVerticalCheckbox');
   const displayDialog = document.getElementById('displayDialog');
   const darkModeCheckbox = document.getElementById('darkModeCheckbox');
   const autoScaleCheckbox = document.getElementById('autoScaleCheckbox');
@@ -126,6 +134,8 @@
   const challengeDialog = document.getElementById('challengeDialog');
   const challengeBoardSelect = document.getElementById('challengeBoardSelect');
   const randomizeGapsCheckbox = document.getElementById('randomizeGapsCheckbox');
+  const challengeWrapHorizontalCheckbox = document.getElementById('challengeWrapHorizontalCheckbox');
+  const challengeWrapVerticalCheckbox = document.getElementById('challengeWrapVerticalCheckbox');
   const challengeStartBtn = document.getElementById('challengeStartBtn');
   const challengeCancelBtn = document.getElementById('challengeCancelBtn');
   const dailyChallengeBtn = document.getElementById('dailyChallengeBtn');
@@ -182,6 +192,12 @@
   let challengeMoveCount = 0;
   let isShuffling = false; // Flag to prevent move counting during shuffle
   let challengeSolved = false; // Flag to track if challenge is solved
+  
+  // Wrapping state
+  let wrapHorizontal = false; // Current horizontal wrapping state
+  let wrapVertical = false;   // Current vertical wrapping state
+  let challengeWrapHorizontal = false; // Horizontal wrapping for challenge
+  let challengeWrapVertical = false;   // Vertical wrapping for challenge
   
   // Timer state
   let timerStartTime = null;
@@ -283,6 +299,51 @@
   }
 
   /**
+   * Normalize coordinates with wrapping
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @returns {Object} Normalized {x, y} coordinates
+   */
+  function normalizeCoords(x, y) {
+    let nx = x;
+    let ny = y;
+    
+    if (wrapHorizontal) {
+      nx = ((x % boardConfig.width) + boardConfig.width) % boardConfig.width;
+    }
+    
+    if (wrapVertical) {
+      ny = ((y % boardConfig.height) + boardConfig.height) % boardConfig.height;
+    }
+    
+    return { x: nx, y: ny };
+  }
+
+  /**
+   * Check if coordinates are valid (within bounds or wrapping enabled)
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @returns {boolean} True if valid
+   */
+  function isValidCoord(x, y) {
+    if (wrapHorizontal) {
+      // X can be any value with wrapping
+      if (y < 0 || y >= boardConfig.height) return false;
+    } else {
+      if (x < 0 || x >= boardConfig.width || y < 0 || y >= boardConfig.height) return false;
+    }
+    
+    if (wrapVertical) {
+      // Y can be any value with wrapping
+      if (x < 0 || x >= boardConfig.width) return false;
+    } else {
+      if (x < 0 || x >= boardConfig.width || y < 0 || y >= boardConfig.height) return false;
+    }
+    
+    return true;
+  }
+
+  /**
    * Helper function to create a piece (tile or gap)
    * @param {string} type - 'small', 'big', or 'gap'
    * @param {string} id - Piece ID
@@ -378,10 +439,11 @@
     
     for (const piece of pieces) {
       if (piece.type === 'big') {
-        // Big piece occupies 2×2 cells
+        // Big piece occupies 2×2 cells (with wrapping support)
         for(let dy=0; dy<2; dy++) {
           for(let dx=0; dx<2; dx++) {
-            grid[piece.y+dy][piece.x+dx] = {
+            const cellPos = normalizeCoords(piece.x + dx, piece.y + dy);
+            grid[cellPos.y][cellPos.x] = {
               type: 'big',
               id: piece.id,
               ox: dx,
@@ -737,7 +799,7 @@
     const url = new URL(window.location);
     
     if (gameMode === 'challenge' && challengeSeed !== null && challengeSteps !== null) {
-      // Challenge mode: add seed, steps, board, and randomizeGaps parameters
+      // Challenge mode: add seed, steps, board, randomizeGaps, and wrapping parameters
       url.searchParams.set('seed', challengeSeed);
       url.searchParams.set('steps', challengeSteps);
       url.searchParams.set('board', challengeBoard || currentBoardSlug);
@@ -746,12 +808,24 @@
       } else {
         url.searchParams.delete('randomizeGaps');
       }
+      if (challengeWrapHorizontal) {
+        url.searchParams.set('wrapH', 'true');
+      } else {
+        url.searchParams.delete('wrapH');
+      }
+      if (challengeWrapVertical) {
+        url.searchParams.set('wrapV', 'true');
+      } else {
+        url.searchParams.delete('wrapV');
+      }
     } else {
       // Free Play mode: remove challenge parameters
       url.searchParams.delete('seed');
       url.searchParams.delete('steps');
       url.searchParams.delete('board');
       url.searchParams.delete('randomizeGaps');
+      url.searchParams.delete('wrapH');
+      url.searchParams.delete('wrapV');
     }
     
     // Update URL without reloading the page
@@ -764,6 +838,8 @@
     challengeSteps = null;
     challengeBoard = null;
     challengeRandomizeGaps = false;
+    challengeWrapHorizontal = false;
+    challengeWrapVertical = false;
     challengeMoveCount = 0;
     challengeSolved = false;
     stopTimer();
@@ -771,6 +847,7 @@
     updateURL(); // Update URL when switching to Free Play
     renderGaps(); // Restore gap highlighting for Free Play mode
     // Don't reset the board - keep current state
+    // Keep wrapping settings from challenge (don't reset wrapHorizontal/wrapVertical)
     
     // Reapply board size since challenge box appearance affects available space
     if (autoFitEnabled) {
@@ -778,14 +855,20 @@
     }
   }
 
-  async function startChallenge(seed, steps, boardSlug = null, randomizeGaps = false) {
+  async function startChallenge(seed, steps, boardSlug = null, randomizeGaps = false, wrapH = false, wrapV = false) {
     gameMode = 'challenge';
     challengeSeed = seed;
     challengeSteps = steps;
     challengeBoard = boardSlug || currentBoardSlug;
     challengeRandomizeGaps = randomizeGaps;
+    challengeWrapHorizontal = wrapH;
+    challengeWrapVertical = wrapV;
     challengeMoveCount = 0;
     challengeSolved = false;
+    
+    // Apply wrapping settings
+    wrapHorizontal = wrapH;
+    wrapVertical = wrapV;
     
     // Stop any existing timer and remove paused state
     stopTimer();
@@ -842,14 +925,152 @@
 
   function renderAll() {
     for (const piece of pieces) {
-      // Position element
-      piece.el.style.left = `${piece.x * tilePx}px`;
-      piece.el.style.top = `${piece.y * tilePx}px`;
+      // Remove any existing duplicate elements
+      const duplicates = boardEl.querySelectorAll(`[data-duplicate-of="${piece.id}"]`);
+      duplicates.forEach(dup => dup.remove());
       
-      // Update selection visual (for gaps only)
-      if (piece.isGap) {
-        const showSelection = piece.selected && !(gameMode === 'challenge' && challengeSolved);
-        piece.el.classList.toggle('selected', showSelection);
+      if (piece.type === 'big') {
+        // For large pieces with wrapping, we need to render segments based on wrap direction
+        // Calculate all 4 cell positions with normalization
+        const cells = [
+          normalizeCoords(piece.x, piece.y),           // Top-left
+          normalizeCoords(piece.x + 1, piece.y),       // Top-right
+          normalizeCoords(piece.x, piece.y + 1),       // Bottom-left
+          normalizeCoords(piece.x + 1, piece.y + 1)    // Bottom-right
+        ];
+        
+        // Check if piece spans board edges (cells are not contiguous)
+        const spansHorizontal = (wrapHorizontal &&
+          (Math.abs(cells[0].x - cells[1].x) > 1 || Math.abs(cells[2].x - cells[3].x) > 1));
+        const spansVertical = (wrapVertical &&
+          (Math.abs(cells[0].y - cells[2].y) > 1 || Math.abs(cells[1].y - cells[3].y) > 1));
+        
+        if (spansHorizontal && spansVertical) {
+          // Piece spans both directions - render as 4 individual 1×1 cells
+          piece.el.style.display = 'none';
+          
+          const offsets = [
+            {ox: 0, oy: 0}, // Top-left
+            {ox: 1, oy: 0}, // Top-right
+            {ox: 0, oy: 1}, // Bottom-left
+            {ox: 1, oy: 1}  // Bottom-right
+          ];
+          
+          for (let i = 0; i < 4; i++) {
+            const cell = cells[i];
+            const offset = offsets[i];
+            
+            const dup = document.createElement('div');
+            dup.className = 'tile big-cell';
+            dup.setAttribute('data-duplicate-of', piece.id);
+            dup.setAttribute('data-cell-offset', `${offset.ox},${offset.oy}`);
+            
+            dup.style.left = `${cell.x * tilePx}px`;
+            dup.style.top = `${cell.y * tilePx}px`;
+            dup.style.width = `${tilePx}px`;
+            dup.style.height = `${tilePx}px`;
+            
+            const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            dup.style.backgroundImage = `url("${image}")`;
+            dup.style.backgroundSize = bgSize;
+            dup.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + offset.ox, piece.homeY + offset.oy);
+            
+            boardEl.appendChild(dup);
+          }
+        } else if (spansHorizontal) {
+          // Piece spans horizontally only - render as 2 vertical strips (1×2 each)
+          piece.el.style.display = 'none';
+          
+          // Left strip (cells 0 and 2: top-left and bottom-left)
+          const leftStrip = document.createElement('div');
+          leftStrip.className = 'tile big';
+          leftStrip.setAttribute('data-duplicate-of', piece.id);
+          leftStrip.setAttribute('data-strip', 'left');
+          
+          leftStrip.style.left = `${cells[0].x * tilePx}px`;
+          leftStrip.style.top = `${cells[0].y * tilePx}px`;
+          leftStrip.style.width = `${tilePx}px`;
+          leftStrip.style.height = `${2 * tilePx}px`;
+          
+          const { image: imgLeft, bgSize: bgSizeLeft } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+          leftStrip.style.backgroundImage = `url("${imgLeft}")`;
+          leftStrip.style.backgroundSize = bgSizeLeft;
+          leftStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+          
+          boardEl.appendChild(leftStrip);
+          
+          // Right strip (cells 1 and 3: top-right and bottom-right)
+          const rightStrip = document.createElement('div');
+          rightStrip.className = 'tile big';
+          rightStrip.setAttribute('data-duplicate-of', piece.id);
+          rightStrip.setAttribute('data-strip', 'right');
+          
+          rightStrip.style.left = `${cells[1].x * tilePx}px`;
+          rightStrip.style.top = `${cells[1].y * tilePx}px`;
+          rightStrip.style.width = `${tilePx}px`;
+          rightStrip.style.height = `${2 * tilePx}px`;
+          
+          const { image: imgRight, bgSize: bgSizeRight } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+          rightStrip.style.backgroundImage = `url("${imgRight}")`;
+          rightStrip.style.backgroundSize = bgSizeRight;
+          rightStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + 1, piece.homeY);
+          
+          boardEl.appendChild(rightStrip);
+        } else if (spansVertical) {
+          // Piece spans vertically only - render as 2 horizontal strips (2×1 each)
+          piece.el.style.display = 'none';
+          
+          // Top strip (cells 0 and 1: top-left and top-right)
+          const topStrip = document.createElement('div');
+          topStrip.className = 'tile big';
+          topStrip.setAttribute('data-duplicate-of', piece.id);
+          topStrip.setAttribute('data-strip', 'top');
+          
+          topStrip.style.left = `${cells[0].x * tilePx}px`;
+          topStrip.style.top = `${cells[0].y * tilePx}px`;
+          topStrip.style.width = `${2 * tilePx}px`;
+          topStrip.style.height = `${tilePx}px`;
+          
+          const { image: imgTop, bgSize: bgSizeTop } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+          topStrip.style.backgroundImage = `url("${imgTop}")`;
+          topStrip.style.backgroundSize = bgSizeTop;
+          topStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+          
+          boardEl.appendChild(topStrip);
+          
+          // Bottom strip (cells 2 and 3: bottom-left and bottom-right)
+          const bottomStrip = document.createElement('div');
+          bottomStrip.className = 'tile big';
+          bottomStrip.setAttribute('data-duplicate-of', piece.id);
+          bottomStrip.setAttribute('data-strip', 'bottom');
+          
+          bottomStrip.style.left = `${cells[2].x * tilePx}px`;
+          bottomStrip.style.top = `${cells[2].y * tilePx}px`;
+          bottomStrip.style.width = `${2 * tilePx}px`;
+          bottomStrip.style.height = `${tilePx}px`;
+          
+          const { image: imgBottom, bgSize: bgSizeBottom } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+          bottomStrip.style.backgroundImage = `url("${imgBottom}")`;
+          bottomStrip.style.backgroundSize = bgSizeBottom;
+          bottomStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY + 1);
+          
+          boardEl.appendChild(bottomStrip);
+        } else {
+          // Piece doesn't span edge - render normally as 2×2
+          piece.el.style.display = '';
+          piece.el.style.left = `${piece.x * tilePx}px`;
+          piece.el.style.top = `${piece.y * tilePx}px`;
+        }
+      } else {
+        // Small pieces and gaps - render normally
+        piece.el.style.left = `${piece.x * tilePx}px`;
+        piece.el.style.top = `${piece.y * tilePx}px`;
+        
+        // Update selection visual (for gaps only)
+        if (piece.isGap) {
+          const showSelection = piece.selected && !(gameMode === 'challenge' && challengeSolved);
+          piece.el.classList.toggle('selected', showSelection);
+        }
       }
     }
   }
@@ -886,7 +1107,16 @@
     if (dir === 'left') { fromX = selectedGap.x + 1; fromY = selectedGap.y; dx = -1; dy = 0; }
     if (dir === 'right'){ fromX = selectedGap.x - 1; fromY = selectedGap.y; dx = 1; dy = 0; }
 
-    if (fromX < 0 || fromX >= boardConfig.width || fromY < 0 || fromY >= boardConfig.height) return false;
+    // Apply wrapping to source coordinates
+    const wrappedFrom = normalizeCoords(fromX, fromY);
+    fromX = wrappedFrom.x;
+    fromY = wrappedFrom.y;
+    
+    // Check bounds (with wrapping, coordinates should always be valid after normalization)
+    if (!wrapHorizontal && !wrapVertical) {
+      // No wrapping: use original boundary check
+      if (fromX < 0 || fromX >= boardConfig.width || fromY < 0 || fromY >= boardConfig.height) return false;
+    }
 
     const sourceCell = grid[fromY][fromX];
     if (!sourceCell) return false;
@@ -921,9 +1151,10 @@
     if (!movingPiece) return false;
 
     if (movingPiece.type === 'small') {
-      // Move small piece into the selected gap
-      movingPiece.x += dx;
-      movingPiece.y += dy;
+      // Move small piece into the selected gap (with wrapping)
+      const newPos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
+      movingPiece.x = newPos.x;
+      movingPiece.y = newPos.y;
 
       // Move selected gap to the freed cell
       selectedGap.x = fromX;
@@ -948,25 +1179,48 @@
       // Determine destination face cells (must be both gaps), and freed cells after move
       let dest = [], freed = [];
       if (dx === 1) { // right
-        if (movingPiece.x + 2 >= boardConfig.width) return false;
-        dest = [{x:movingPiece.x+2, y:movingPiece.y}, {x:movingPiece.x+2, y:movingPiece.y+1}];
-        freed = [{x:movingPiece.x, y:movingPiece.y}, {x:movingPiece.x, y:movingPiece.y+1}];
+        if (!wrapHorizontal && movingPiece.x + 2 >= boardConfig.width) return false;
+        const d1 = normalizeCoords(movingPiece.x+2, movingPiece.y);
+        const d2 = normalizeCoords(movingPiece.x+2, movingPiece.y+1);
+        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
+        // Normalize freed cells too
+        const f1 = normalizeCoords(movingPiece.x, movingPiece.y);
+        const f2 = normalizeCoords(movingPiece.x, movingPiece.y+1);
+        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
       } else if (dx === -1) { // left
-        if (movingPiece.x - 1 < 0) return false;
-        dest = [{x:movingPiece.x-1, y:movingPiece.y}, {x:movingPiece.x-1, y:movingPiece.y+1}];
-        freed = [{x:movingPiece.x+1, y:movingPiece.y}, {x:movingPiece.x+1, y:movingPiece.y+1}];
+        if (!wrapHorizontal && movingPiece.x - 1 < 0) return false;
+        const d1 = normalizeCoords(movingPiece.x-1, movingPiece.y);
+        const d2 = normalizeCoords(movingPiece.x-1, movingPiece.y+1);
+        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
+        // Normalize freed cells too
+        const f1 = normalizeCoords(movingPiece.x+1, movingPiece.y);
+        const f2 = normalizeCoords(movingPiece.x+1, movingPiece.y+1);
+        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
       } else if (dy === 1) { // down
-        if (movingPiece.y + 2 >= boardConfig.height) return false;
-        dest = [{x:movingPiece.x, y:movingPiece.y+2}, {x:movingPiece.x+1, y:movingPiece.y+2}];
-        freed = [{x:movingPiece.x, y:movingPiece.y}, {x:movingPiece.x+1, y:movingPiece.y}];
+        if (!wrapVertical && movingPiece.y + 2 >= boardConfig.height) return false;
+        const d1 = normalizeCoords(movingPiece.x, movingPiece.y+2);
+        const d2 = normalizeCoords(movingPiece.x+1, movingPiece.y+2);
+        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
+        // Normalize freed cells too
+        const f1 = normalizeCoords(movingPiece.x, movingPiece.y);
+        const f2 = normalizeCoords(movingPiece.x+1, movingPiece.y);
+        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
       } else if (dy === -1) { // up
-        if (movingPiece.y - 1 < 0) return false;
-        dest = [{x:movingPiece.x, y:movingPiece.y-1}, {x:movingPiece.x+1, y:movingPiece.y-1}];
-        freed = [{x:movingPiece.x, y:movingPiece.y+1}, {x:movingPiece.x+1, y:movingPiece.y+1}];
+        if (!wrapVertical && movingPiece.y - 1 < 0) return false;
+        const d1 = normalizeCoords(movingPiece.x, movingPiece.y-1);
+        const d2 = normalizeCoords(movingPiece.x+1, movingPiece.y-1);
+        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
+        // Normalize freed cells too
+        const f1 = normalizeCoords(movingPiece.x, movingPiece.y+1);
+        const f2 = normalizeCoords(movingPiece.x+1, movingPiece.y+1);
+        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
       }
 
       // Both dest must be gaps, and the selected gap must be one of them
-      const destAreGaps = dest.every(d => grid[d.y][d.x]?.type === 'gap');
+      const destAreGaps = dest.every(d => {
+        const cell = grid[d.y]?.[d.x];
+        return cell?.type === 'gap';
+      });
       const selectedIsDest = dest.some(d => d.x === selectedGap.x && d.y === selectedGap.y);
       if (!(destAreGaps && selectedIsDest)) return false;
 
@@ -993,11 +1247,12 @@
         }
       }
       
-      // Move the piece
+      // Move the piece (with wrapping)
       const oldPieceX = movingPiece.x;
       const oldPieceY = movingPiece.y;
-      movingPiece.x += dx;
-      movingPiece.y += dy;
+      const newPos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
+      movingPiece.x = newPos.x;
+      movingPiece.y = newPos.y;
 
       // Move each gap to its mapped freed cell
       for (const {gap, target} of map) {
@@ -1006,16 +1261,18 @@
       }
 
       // Incremental grid update for big piece move
-      // Clear old 2×2 area
+      // Clear old 2×2 area (with wrapping)
       for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {
-          grid[oldPieceY + dy][oldPieceX + dx] = null;
+          const oldCellPos = normalizeCoords(oldPieceX + dx, oldPieceY + dy);
+          grid[oldCellPos.y][oldCellPos.x] = null;
         }
       }
-      // Set new 2×2 area
+      // Set new 2×2 area (with wrapping)
       for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {
-          grid[movingPiece.y + dy][movingPiece.x + dx] = {
+          const newCellPos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
+          grid[newCellPos.y][newCellPos.x] = {
             type: 'big',
             id: movingPiece.id,
             ox: dx,
@@ -1023,7 +1280,7 @@
           };
         }
       }
-      // Update gap positions in grid
+      // Update gap positions in grid (gaps are already at correct wrapped positions)
       for (const {gap} of map) {
         grid[gap.y][gap.x] = { type: 'gap', id: gap.id };
       }
@@ -1052,7 +1309,15 @@
         if (dir === 'down') fromY = gap.y - 1;
         if (dir === 'left') fromX = gap.x + 1;
         if (dir === 'right') fromX = gap.x - 1;
-        if (fromX < 0 || fromX >= boardConfig.width || fromY < 0 || fromY >= boardConfig.height) continue;
+        
+        // Check bounds before wrapping (skip if no wrapping and out of bounds)
+        if (!wrapHorizontal && (fromX < 0 || fromX >= boardConfig.width)) continue;
+        if (!wrapVertical && (fromY < 0 || fromY >= boardConfig.height)) continue;
+        
+        // Apply wrapping to coordinates
+        const wrappedFrom = normalizeCoords(fromX, fromY);
+        fromX = wrappedFrom.x;
+        fromY = wrappedFrom.y;
         
         const occ = grid[fromY][fromX];
         if (!occ) continue;
@@ -1071,19 +1336,30 @@
           if (dir === 'right') dx = 1;
           let dest = [];
           if (dx === 1) {
-            if (piece.x + 2 >= boardConfig.width) continue;
-            dest = [{x:piece.x+2, y:piece.y}, {x:piece.x+2, y:piece.y+1}];
+            if (!wrapHorizontal && piece.x + 2 >= boardConfig.width) continue;
+            const d1 = normalizeCoords(piece.x+2, piece.y);
+            const d2 = normalizeCoords(piece.x+2, piece.y+1);
+            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
           } else if (dx === -1) {
-            if (piece.x - 1 < 0) continue;
-            dest = [{x:piece.x-1, y:piece.y}, {x:piece.x-1, y:piece.y+1}];
+            if (!wrapHorizontal && piece.x - 1 < 0) continue;
+            const d1 = normalizeCoords(piece.x-1, piece.y);
+            const d2 = normalizeCoords(piece.x-1, piece.y+1);
+            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
           } else if (dy === 1) {
-            if (piece.y + 2 >= boardConfig.height) continue;
-            dest = [{x:piece.x, y:piece.y+2}, {x:piece.x+1, y:piece.y+2}];
+            if (!wrapVertical && piece.y + 2 >= boardConfig.height) continue;
+            const d1 = normalizeCoords(piece.x, piece.y+2);
+            const d2 = normalizeCoords(piece.x+1, piece.y+2);
+            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
           } else if (dy === -1) {
-            if (piece.y - 1 < 0) continue;
-            dest = [{x:piece.x, y:piece.y-1}, {x:piece.x+1, y:piece.y-1}];
+            if (!wrapVertical && piece.y - 1 < 0) continue;
+            const d1 = normalizeCoords(piece.x, piece.y-1);
+            const d2 = normalizeCoords(piece.x+1, piece.y-1);
+            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
           }
-          const destAreGaps = dest.every(d => grid[d.y][d.x]?.type === 'gap');
+          const destAreGaps = dest.every(d => {
+            const cell = grid[d.y]?.[d.x];
+            return cell?.type === 'gap';
+          });
           const selectedIsDest = dest.some(d => d.x === gap.x && d.y === gap.y);
           if (destAreGaps && selectedIsDest) {
             moves.push({ gap, dir, isBig: true, isGapSwap: false });
@@ -1127,12 +1403,28 @@
   
   /**
    * Calculate Manhattan distance between two gaps
+   * Takes wrapping into account - uses shortest path
    * @param {Object} gap1 - First gap with x, y
    * @param {Object} gap2 - Second gap with x, y
    * @returns {number} Manhattan distance
    */
   function gapDistance(gap1, gap2) {
-    return Math.abs(gap1.x - gap2.x) + Math.abs(gap1.y - gap2.y);
+    let dx = Math.abs(gap1.x - gap2.x);
+    let dy = Math.abs(gap1.y - gap2.y);
+    
+    // If horizontal wrapping is enabled, use shortest path
+    if (wrapHorizontal) {
+      const wrapDx = boardConfig.width - dx;
+      dx = Math.min(dx, wrapDx);
+    }
+    
+    // If vertical wrapping is enabled, use shortest path
+    if (wrapVertical) {
+      const wrapDy = boardConfig.height - dy;
+      dy = Math.min(dy, wrapDy);
+    }
+    
+    return dx + dy;
   }
   
   /**
@@ -1153,6 +1445,8 @@
     
     // Predict where the moving gap will be after this move
     const movingGap = move.gap;
+    const otherGap = gapPieces.find(g => g !== movingGap);
+    if (!otherGap) return 1.0;
     let newX = movingGap.x;
     let newY = movingGap.y;
     
@@ -1163,11 +1457,13 @@
     if (move.dir === 'left') newX++; // Gap moves right
     if (move.dir === 'right') newX--; // Gap moves left
     
-    // Calculate distance after move
-    const otherGap = gapPieces.find(g => g !== movingGap);
-    if (!otherGap) return 1.0;
+    // Normalize new position with wrapping
+    const normalizedNew = normalizeCoords(newX, newY);
+    newX = normalizedNew.x;
+    newY = normalizedNew.y;
     
-    const newDistance = Math.abs(newX - otherGap.x) + Math.abs(newY - otherGap.y);
+    // Calculate distance after move using wrapping-aware distance
+    const newDistance = gapDistance(normalizedNew, otherGap);
     
     // Determine if move brings gaps closer or pushes them further
     let weight = 1.0;
@@ -1185,6 +1481,7 @@
   
   /**
    * Calculate shuffle quality score based on Manhattan distance of large pieces from home
+   * Takes wrapping into account - uses shortest path
    * Higher score = more scrambled puzzle
    * @returns {number} Sum of Manhattan distances for all large pieces
    */
@@ -1193,7 +1490,22 @@
     
     const bigPieces = pieces.filter(p => p.type === 'big');
     for (const piece of bigPieces) {
-      const manhattanDistance = Math.abs(piece.x - piece.homeX) + Math.abs(piece.y - piece.homeY);
+      let dx = Math.abs(piece.x - piece.homeX);
+      let dy = Math.abs(piece.y - piece.homeY);
+      
+      // If horizontal wrapping is enabled, use shortest path
+      if (wrapHorizontal) {
+        const wrapDx = boardConfig.width - dx;
+        dx = Math.min(dx, wrapDx);
+      }
+      
+      // If vertical wrapping is enabled, use shortest path
+      if (wrapVertical) {
+        const wrapDy = boardConfig.height - dy;
+        dy = Math.min(dy, wrapDy);
+      }
+      
+      const manhattanDistance = dx + dy;
       totalDistance += manhattanDistance;
     }
     
@@ -1216,7 +1528,7 @@
     // Using XOR with bit shifting to avoid overflow and ensure good bit mixing
     // Board hash: default=0, horizontal=1, vertical=2 (shifted left by 24 bits)
     const boardHash = currentBoardSlug === 'horizontal' ? 1 : currentBoardSlug === 'vertical' ? 2 : 0;
-    const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24)) >>> 0) : null;
+    const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24) ^ (randomizeGaps << 12) ^ (wrapHorizontal << 13) ^ (wrapVertical << 14)) >>> 0) : null;
     const rng = combinedSeed !== null ? new SeededRandom(combinedSeed) : null;
     const random = () => rng ? rng.next() : Math.random();
     const randomInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max);
@@ -1400,6 +1712,7 @@
   
   /**
    * Get all cells that should be checked for a tile (1 for small, 4 for big)
+   * Normalizes coordinates for wrapped pieces
    * @param {Object} tile - The tile object
    * @param {Object} clickedCell - The grid cell data
    * @param {number} gridX - Grid X coordinate (for small pieces)
@@ -1408,11 +1721,16 @@
    */
   function getCellsForTile(tile, clickedCell, gridX, gridY) {
     if (clickedCell.type === 'big') {
+      // For big pieces, normalize all 4 cell coordinates
+      const c1 = normalizeCoords(tile.x, tile.y);
+      const c2 = normalizeCoords(tile.x + 1, tile.y);
+      const c3 = normalizeCoords(tile.x, tile.y + 1);
+      const c4 = normalizeCoords(tile.x + 1, tile.y + 1);
       return [
-        {x: tile.x, y: tile.y},
-        {x: tile.x + 1, y: tile.y},
-        {x: tile.x, y: tile.y + 1},
-        {x: tile.x + 1, y: tile.y + 1}
+        {x: c1.x, y: c1.y},
+        {x: c2.x, y: c2.y},
+        {x: c3.x, y: c3.y},
+        {x: c4.x, y: c4.y}
       ];
     }
     return [{x: gridX, y: gridY}];
@@ -1420,6 +1738,7 @@
 
   /**
    * Find which gaps are adjacent to given cells and in which direction
+   * Handles wrapping by checking both direct adjacency and wrapped adjacency
    * @param {Array} cells - Array of {x, y} cell coordinates to check
    * @returns {Array} Array of {gap, dx, dy} for each adjacent gap
    */
@@ -1431,9 +1750,40 @@
       for (const cell of cells) {
         const dx = gap.x - cell.x;
         const dy = gap.y - cell.y;
+        
+        // Check direct adjacency
         if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
           result.push({ gap, dx, dy });
           break; // Only add each gap once
+        }
+        
+        // Check wrapped adjacency if wrapping is enabled
+        if (wrapHorizontal) {
+          // Check if gap wraps around horizontally
+          if (cell.x === boardConfig.width - 1 && gap.x === 0 && dy === 0) {
+            // Gap is at left edge, cell is at right edge (gap is "to the right" via wrapping)
+            result.push({ gap, dx: 1, dy: 0 });
+            break;
+          }
+          if (cell.x === 0 && gap.x === boardConfig.width - 1 && dy === 0) {
+            // Gap is at right edge, cell is at left edge (gap is "to the left" via wrapping)
+            result.push({ gap, dx: -1, dy: 0 });
+            break;
+          }
+        }
+        
+        if (wrapVertical) {
+          // Check if gap wraps around vertically
+          if (cell.y === boardConfig.height - 1 && gap.y === 0 && dx === 0) {
+            // Gap is at top edge, cell is at bottom edge (gap is "below" via wrapping)
+            result.push({ gap, dx: 0, dy: 1 });
+            break;
+          }
+          if (cell.y === 0 && gap.y === boardConfig.height - 1 && dx === 0) {
+            // Gap is at bottom edge, cell is at top edge (gap is "above" via wrapping)
+            result.push({ gap, dx: 0, dy: -1 });
+            break;
+          }
         }
       }
     }
@@ -1510,6 +1860,7 @@
 
   /**
    * Check if a gap is in the given swipe direction relative to cells
+   * Handles wrapping by checking both direct adjacency and wrapped adjacency
    * @param {Array} cells - Array of {x, y} cell coordinates
    * @param {Object} gap - Gap object with x, y
    * @param {string} swipeDir - Swipe direction ('up'/'down'/'left'/'right')
@@ -1517,13 +1868,27 @@
    */
   function isGapInSwipeDirection(cells, gap, swipeDir) {
     for (const cell of cells) {
-      const dx = gap.x - cell.x;
-      const dy = gap.y - cell.y;
+      let dx = gap.x - cell.x;
+      let dy = gap.y - cell.y;
       
+      // Check direct adjacency first
       if (swipeDir === 'right' && dx === 1 && dy === 0) return true;
       if (swipeDir === 'left' && dx === -1 && dy === 0) return true;
       if (swipeDir === 'down' && dx === 0 && dy === 1) return true;
       if (swipeDir === 'up' && dx === 0 && dy === -1) return true;
+      
+      // Check wrapped adjacency if wrapping is enabled
+      if (wrapHorizontal) {
+        // Check if gap wraps around horizontally
+        if (swipeDir === 'right' && cell.x === boardConfig.width - 1 && gap.x === 0 && dy === 0) return true;
+        if (swipeDir === 'left' && cell.x === 0 && gap.x === boardConfig.width - 1 && dy === 0) return true;
+      }
+      
+      if (wrapVertical) {
+        // Check if gap wraps around vertically
+        if (swipeDir === 'down' && cell.y === boardConfig.height - 1 && gap.y === 0 && dx === 0) return true;
+        if (swipeDir === 'up' && cell.y === 0 && gap.y === boardConfig.height - 1 && dx === 0) return true;
+      }
     }
     return false;
   }
@@ -1895,23 +2260,43 @@
           else if (swipeDir === 'down') dy = 1;
           else if (swipeDir === 'up') dy = -1;
           
-          // Calculate destination face cells
+          // Calculate destination face cells with wrapping support
           let destCells = [];
           if (dx === 1) { // right
-            if (piece.x + 2 < boardConfig.width) {
-              destCells = [{x: piece.x + 2, y: piece.y}, {x: piece.x + 2, y: piece.y + 1}];
+            if (!wrapHorizontal && piece.x + 2 >= boardConfig.width) {
+              // No wrapping and out of bounds
+              destCells = [];
+            } else {
+              const d1 = normalizeCoords(piece.x + 2, piece.y);
+              const d2 = normalizeCoords(piece.x + 2, piece.y + 1);
+              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
             }
           } else if (dx === -1) { // left
-            if (piece.x - 1 >= 0) {
-              destCells = [{x: piece.x - 1, y: piece.y}, {x: piece.x - 1, y: piece.y + 1}];
+            if (!wrapHorizontal && piece.x - 1 < 0) {
+              // No wrapping and out of bounds
+              destCells = [];
+            } else {
+              const d1 = normalizeCoords(piece.x - 1, piece.y);
+              const d2 = normalizeCoords(piece.x - 1, piece.y + 1);
+              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
             }
           } else if (dy === 1) { // down
-            if (piece.y + 2 < boardConfig.height) {
-              destCells = [{x: piece.x, y: piece.y + 2}, {x: piece.x + 1, y: piece.y + 2}];
+            if (!wrapVertical && piece.y + 2 >= boardConfig.height) {
+              // No wrapping and out of bounds
+              destCells = [];
+            } else {
+              const d1 = normalizeCoords(piece.x, piece.y + 2);
+              const d2 = normalizeCoords(piece.x + 1, piece.y + 2);
+              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
             }
           } else if (dy === -1) { // up
-            if (piece.y - 1 >= 0) {
-              destCells = [{x: piece.x, y: piece.y - 1}, {x: piece.x + 1, y: piece.y - 1}];
+            if (!wrapVertical && piece.y - 1 < 0) {
+              // No wrapping and out of bounds
+              destCells = [];
+            } else {
+              const d1 = normalizeCoords(piece.x, piece.y - 1);
+              const d2 = normalizeCoords(piece.x + 1, piece.y - 1);
+              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
             }
           }
           
@@ -2085,19 +2470,48 @@
       // No swipe detected - handle click behavior only if mouse didn't move
       if (!mouseMoved && wasAlreadySelected) {
         // Gap was already selected - only swap if exactly one gap is adjacent (unambiguous)
-        // Count how many gaps are adjacent to this gap
+        // Count how many gaps are adjacent to this gap (including wrapped adjacency)
         const adjacentGaps = gapPieces.filter(g => {
           if (g === clickedGap) return false; // Skip self
           const dx = g.x - gridX;
           const dy = g.y - gridY;
-          return (Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1);
+          
+          // Check direct adjacency
+          if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
+            return true;
+          }
+          
+          // Check wrapped adjacency if wrapping is enabled
+          if (wrapHorizontal) {
+            // Check if gap wraps around horizontally
+            if (gridX === boardConfig.width - 1 && g.x === 0 && dy === 0) return true; // Gap at left edge, clicked gap at right edge
+            if (gridX === 0 && g.x === boardConfig.width - 1 && dy === 0) return true; // Gap at right edge, clicked gap at left edge
+          }
+          
+          if (wrapVertical) {
+            // Check if gap wraps around vertically
+            if (gridY === boardConfig.height - 1 && g.y === 0 && dx === 0) return true; // Gap at top edge, clicked gap at bottom edge
+            if (gridY === 0 && g.y === boardConfig.height - 1 && dx === 0) return true; // Gap at bottom edge, clicked gap at top edge
+          }
+          
+          return false;
         });
         
         // Only swap if exactly one gap is adjacent (unambiguous)
         if (adjacentGaps.length === 1) {
           const otherGap = adjacentGaps[0];
-          const dx = otherGap.x - gridX;
-          const dy = otherGap.y - gridY;
+          let dx = otherGap.x - gridX;
+          let dy = otherGap.y - gridY;
+          
+          // Adjust dx/dy for wrapped adjacency
+          if (wrapHorizontal) {
+            if (gridX === boardConfig.width - 1 && otherGap.x === 0) dx = 1; // Wrapped right
+            if (gridX === 0 && otherGap.x === boardConfig.width - 1) dx = -1; // Wrapped left
+          }
+          if (wrapVertical) {
+            if (gridY === boardConfig.height - 1 && otherGap.y === 0) dy = 1; // Wrapped down
+            if (gridY === 0 && otherGap.y === boardConfig.height - 1) dy = -1; // Wrapped up
+          }
           
           // Determine swap direction (tryMove direction is OPPOSITE of where the gap is)
           let gapSwapDir = null;
@@ -2215,8 +2629,8 @@
 
   resetBtn.addEventListener('click', () => {
     if (gameMode === 'challenge') {
-      // In challenge mode, reset recreates the challenge with the same randomizeGaps setting
-      startChallenge(challengeSeed, challengeSteps, challengeBoard, challengeRandomizeGaps);
+      // In challenge mode, reset recreates the challenge with the same settings
+      startChallenge(challengeSeed, challengeSteps, challengeBoard, challengeRandomizeGaps, challengeWrapHorizontal, challengeWrapVertical);
     } else {
       // In free play mode, reset returns to solved state
       resetState();
@@ -2275,6 +2689,9 @@
   settingsBtn.addEventListener('click', () => {
     // Set current board in dropdown
     settingsBoardSelect.value = currentBoardSlug;
+    // Set current wrapping state
+    wrapHorizontalCheckbox.checked = wrapHorizontal;
+    wrapVerticalCheckbox.checked = wrapVertical;
     settingsDialog.style.display = 'flex';
     settingsBoardSelect.focus();
   });
@@ -2323,10 +2740,24 @@
     randomizeGapIdentities();
   });
 
+  // Wrapping checkbox handlers for Free Play
+  wrapHorizontalCheckbox.addEventListener('change', () => {
+    wrapHorizontal = wrapHorizontalCheckbox.checked;
+    renderAll(); // Re-render to show/hide duplicates
+  });
+
+  wrapVerticalCheckbox.addEventListener('change', () => {
+    wrapVertical = wrapVerticalCheckbox.checked;
+    renderAll(); // Re-render to show/hide duplicates
+  });
+
   // Challenge dialog handlers
   challengeBtn.addEventListener('click', () => {
     // Set current board in dropdown
     challengeBoardSelect.value = currentBoardSlug;
+    // Set current wrapping state for challenge
+    challengeWrapHorizontalCheckbox.checked = wrapHorizontal;
+    challengeWrapVerticalCheckbox.checked = wrapVertical;
     challengeDialog.style.display = 'flex';
     seedInput.focus();
   });
@@ -2360,6 +2791,8 @@
     const steps = parseInt(stepsInput.value) || 250;
     const boardSlug = challengeBoardSelect.value;
     const randomizeGaps = randomizeGapsCheckbox.checked;
+    const wrapH = challengeWrapHorizontalCheckbox.checked;
+    const wrapV = challengeWrapVerticalCheckbox.checked;
     
     // Close dialog
     challengeDialog.style.display = 'none';
@@ -2377,7 +2810,7 @@
     }
     
     // Start the challenge
-    await startChallenge(seed, steps, boardSlug, randomizeGaps);
+    await startChallenge(seed, steps, boardSlug, randomizeGaps, wrapH, wrapV);
     
     boardEl.focus();
   });
@@ -2692,6 +3125,8 @@
     const stepsParam = urlParams.get('steps');
     const boardParam = urlParams.get('board');
     const randomizeGapsParam = urlParams.get('randomizeGaps');
+    const wrapHParam = urlParams.get('wrapH');
+    const wrapVParam = urlParams.get('wrapV');
     
     // Only auto-start if both seed and steps parameters exist and are non-empty
     if (seedParam !== null && seedParam.trim() !== '' &&
@@ -2700,12 +3135,14 @@
       const steps = parseInt(stepsParam) || 250;
       const boardSlug = boardParam && boardRegistry[boardParam] ? boardParam : 'default';
       const randomizeGaps = randomizeGapsParam === 'true';
+      const wrapH = wrapHParam === 'true';
+      const wrapV = wrapVParam === 'true';
       
-      console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}, board=${boardSlug}, randomizeGaps=${randomizeGaps}`);
+      console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}, board=${boardSlug}, randomizeGaps=${randomizeGaps}, wrapH=${wrapH}, wrapV=${wrapV}`);
       
       // Start challenge after initialization
       setTimeout(async () => {
-        await startChallenge(seed, steps, boardSlug, randomizeGaps);
+        await startChallenge(seed, steps, boardSlug, randomizeGaps, wrapH, wrapV);
         boardEl.focus();
       }, 0);
     }

@@ -97,6 +97,200 @@ Gaps are not just empty spaces—they are entities with persistent identity that
 - All pieces keep their original identities (homeX, homeY unchanged)
 - Only the behavior changes, not the visual identity
 
+### Wrapping System
+
+The game supports optional horizontal and vertical wrapping, creating a toroidal topology where pieces can move from one edge of the board to the opposite edge.
+
+#### Wrapping Modes
+
+**Horizontal Wrapping**:
+- Pieces can move from the rightmost column (x = width-1) to the leftmost column (x = 0) and vice versa
+- Creates a cylindrical topology in the horizontal direction
+- Enabled via checkbox in Settings dialog (Free Play) or Challenge dialog
+
+**Vertical Wrapping**:
+- Pieces can move from the bottom row (y = height-1) to the top row (y = 0) and vice versa
+- Creates a cylindrical topology in the vertical direction
+- Enabled via checkbox in Settings dialog (Free Play) or Challenge dialog
+
+**Combined Wrapping**:
+- When both are enabled, creates a true toroidal topology
+- Pieces can wrap around both horizontally and vertically
+- Large pieces (2×2) can span across board edges
+
+#### State Management
+
+**Free Play Mode**:
+- `wrapHorizontal`: Boolean flag for horizontal wrapping state
+- `wrapVertical`: Boolean flag for vertical wrapping state
+- Settings persist in localStorage
+- Checkboxes appear in Settings dialog below Random Gaps section
+
+**Challenge Mode**:
+- `challengeWrapHorizontal`: Separate flag for challenge wrapping state
+- `challengeWrapVertical`: Separate flag for challenge wrapping state
+- Wrapping settings included in challenge URL parameters (`wrapH`, `wrapV`)
+- Checkboxes appear in Challenge dialog below Random Gaps option
+- Challenge wrapping state is independent of Free Play wrapping state
+
+#### Coordinate Normalization
+
+**Core Function**: `normalizeCoords(x, y)`
+- Wraps coordinates using modulo arithmetic: `((coord % size) + size) % size`
+- Returns `{x, y}` with normalized coordinates
+- Handles negative coordinates correctly (e.g., -1 wraps to width-1)
+- Used throughout the codebase for consistent coordinate handling
+
+**Usage Contexts**:
+- Movement validation in `tryMove()`
+- Grid building in `buildGridFromState()`
+- Cell enumeration in `getCellsForTile()`
+- Adjacency detection in `findAdjacentGaps()`
+- Rendering in `renderAll()`
+
+#### Wrapped Rendering
+
+**Large Piece Rendering with Wrapping**:
+When wrapping is enabled, large pieces (2×2) that span board edges are rendered intelligently based on the wrap direction:
+
+**Rendering Strategy**:
+1. **No Wrapping** (piece doesn't span any edge):
+   - Renders as single 2×2 element (standard rendering)
+   
+2. **Horizontal Wrapping Only** (piece spans left-right edge):
+   - Renders as 2 vertical strips (1×2 each)
+   - Left strip: Contains left column of the piece
+   - Right strip: Contains right column of the piece
+   - Each strip positioned at its normalized coordinates
+   
+3. **Vertical Wrapping Only** (piece spans top-bottom edge):
+   - Renders as 2 horizontal strips (2×1 each)
+   - Top strip: Contains top row of the piece
+   - Bottom strip: Contains bottom row of the piece
+   - Each strip positioned at its normalized coordinates
+   
+4. **Both Horizontal and Vertical Wrapping** (piece spans corner):
+   - Renders as 4 individual cells (1×1 each)
+   - Each cell positioned independently at its normalized coordinates
+   - Only occurs when piece is in corner and wraps in both directions
+
+**Implementation in `renderAll()`**:
+- Detects wrapping by normalizing all 4 cell coordinates and checking for non-contiguous positions
+- Creates duplicate DOM elements with `data-duplicate-of` attribute for identification
+- Duplicates are removed and recreated on each render
+- Original 2×2 element is hidden when piece spans edges (`display: none`)
+- Each segment displays correct portion of background image based on its offset within the original piece
+- Segments use `.tile.big` class for strips (1×2 or 2×1) and `.tile.big-cell` class for individual cells (1×1)
+
+**Benefits**:
+- Optimal rendering: Only splits piece in direction(s) where it actually wraps
+- Reduced DOM elements: Uses 2 elements instead of 4 when wrapping in only one direction
+- Better visual coherence: Keeps connected cells together when possible
+- All segments appear within board bounds at proper locations
+
+#### Movement with Wrapping
+
+**Small Pieces (1×1)**:
+- Can move through board edges when wrapping is enabled
+- Destination coordinates are normalized using `normalizeCoords()`
+- Movement validation checks wrapped adjacency
+
+**Large Pieces (2×2)**:
+- All 4 cells of the piece are normalized independently
+- Can span across board edges (e.g., cells at x=7 and x=0 on an 8-wide board)
+- Both gaps must be properly aligned considering wrapping
+- Gap alignment validation uses normalized coordinates
+
+**Gap Swapping**:
+- Gaps can swap positions across board edges
+- Adjacency detection includes wrapped adjacency
+- Uses same normalization logic as piece movement
+
+#### Adjacency Detection with Wrapping
+
+**Direct Adjacency**:
+- Standard adjacency: cells differ by 1 in x or y (not both)
+- Example: (3,4) is adjacent to (4,4), (2,4), (3,5), (3,3)
+
+**Wrapped Adjacency**:
+When wrapping is enabled, additional adjacency relationships exist:
+
+**Horizontal Wrapping**:
+- Cell (0, y) is adjacent to (width-1, y) - left edge wraps to right edge
+- Cell (width-1, y) is adjacent to (0, y) - right edge wraps to left edge
+
+**Vertical Wrapping**:
+- Cell (x, 0) is adjacent to (x, height-1) - top edge wraps to bottom edge
+- Cell (x, height-1) is adjacent to (x, 0) - bottom edge wraps to top edge
+
+**Implementation**:
+- `findAdjacentGaps()` checks both direct and wrapped adjacency
+- For each direction, checks if gap is at opposite edge when wrapping enabled
+- Returns direction vectors that may span the board (e.g., dx = width-1 for wrapped adjacency)
+
+#### Mouse Controls with Wrapping
+
+**Swipe Detection**:
+- `isGapInSwipeDirection()` enhanced to detect wrapped adjacency
+- Checks if gap is at opposite edge in swipe direction
+- Works for both pieces and gaps
+
+**Drag Controls**:
+- Drag validation uses normalized coordinates
+- Can drag pieces across board edges
+- Continuous dragging works with wrapped movements
+
+**Click Controls**:
+- Click-to-move works with wrapped adjacency
+- Automatically selects correct gap when only one is adjacent (including wrapped)
+
+#### Grid State with Wrapping
+
+**Grid Building**:
+- `buildGridFromState()` uses normalized coordinates when placing pieces
+- Large pieces spanning edges have cells at wrapped positions
+- Grid remains rectangular (no actual wrapping in data structure)
+
+**Grid Access**:
+- Movement logic normalizes coordinates before grid access
+- Prevents out-of-bounds errors
+- Maintains consistent grid state regardless of wrapping
+
+#### URL Parameters
+
+**Challenge URLs**:
+- `wrapH=1`: Horizontal wrapping enabled
+- `wrapV=1`: Vertical wrapping enabled
+- Example: `?seed=12345&steps=250&board=default&wrapH=1&wrapV=1`
+- Parameters are optional (default to disabled)
+- Enables sharing of challenges with specific wrapping configurations
+
+#### Win Condition with Wrapping
+
+**Solved State**:
+- All pieces must be at their home positions (homeX, homeY)
+- Wrapping does not change the win condition
+- Pieces must return to their original positions, not wrapped equivalents
+- `checkWinCondition()` compares actual positions to home positions
+
+#### Performance Considerations
+
+**Rendering Overhead**:
+- Wrapped pieces create additional DOM elements (duplicates)
+- Duplicates are removed and recreated on each render
+- Minimal performance impact for typical board sizes
+- GPU acceleration via `will-change` CSS property applies to duplicates
+
+**Coordinate Normalization**:
+- `normalizeCoords()` is O(1) operation
+- Called frequently but very efficient
+- No noticeable performance impact
+
+**Grid Updates**:
+- Wrapping does not increase grid update complexity
+- Still uses incremental updates in `tryMove()`
+- Same O(1) cell updates as non-wrapped mode
+
 ### Controls
 
 #### Keyboard Controls
@@ -281,6 +475,10 @@ timerElapsedTime     // Accumulated elapsed time in milliseconds
 timerInterval        // Interval ID for timer updates (100ms)
 timerPaused          // Boolean flag indicating if timer is paused
 timerHidden          // Boolean flag indicating if timer display is hidden
+wrapHorizontal       // Boolean flag for horizontal wrapping in Free Play mode
+wrapVertical         // Boolean flag for vertical wrapping in Free Play mode
+challengeWrapHorizontal  // Boolean flag for horizontal wrapping in Challenge mode
+challengeWrapVertical    // Boolean flag for vertical wrapping in Challenge mode
 ```
 
 #### Grid Cell Format
@@ -1097,6 +1295,8 @@ In `tryMove()` for big pieces:
 
    **A. Gap Distance Heuristic**:
    - Calculates Manhattan distance between gaps (`gapDistance()`)
+     - **Wrapping-aware**: Uses shortest path when wrapping is enabled
+     - Example: On 16-wide board with horizontal wrapping, gaps at x=2 and x=14 are distance 4 apart (not 12)
    - For each small piece move, predicts where the moving gap will end up
    - Applies weight multipliers based on distance change:
      - **Brings gaps closer**: Weight increases as urgency builds (up to 1.5x at max urgency)
@@ -1144,3 +1344,21 @@ In `tryMove()` for big pieces:
 - Hidden shuffle sequence in Challenge Mode (no information leakage)
 - Works with any number of gaps (not limited to 2)
 - **Fast execution**: No expensive move simulation, just distance calculations
+- **Wrapping support**: Distance calculations use shortest path when wrapping is enabled
+
+#### Shuffle Helper Functions
+
+**Distance Calculation Functions** (wrapping-aware):
+- `gapDistance(gap1, gap2)`: Calculates Manhattan distance between two gaps
+  - Uses shortest path when wrapping is enabled
+  - Horizontal wrapping: `dx = min(|x1-x2|, width - |x1-x2|)`
+  - Vertical wrapping: `dy = min(|y1-y2|, height - |y1-y2|)`
+  
+- `calculateDistanceWeight(move, urgency, gapPieces)`: Calculates weight for a move based on gap distance
+  - Normalizes predicted gap position with wrapping
+  - Uses `gapDistance()` for wrapping-aware distance calculation
+  
+- `calculateShuffleScore()`: Calculates shuffle quality score
+  - Measures Manhattan distance of large pieces from home positions
+  - Uses shortest path when wrapping is enabled
+  - Higher score indicates more scrambled puzzle

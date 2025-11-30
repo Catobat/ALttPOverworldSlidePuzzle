@@ -68,6 +68,7 @@
         </div>
         <div class="help-note">
           <p><strong>Note:</strong> Large 2×2 pieces move only if both gaps line up on their path. Adjacent gaps can be swapped.</p>
+          <p><strong>Wrapping:</strong> When horizontal or vertical wrapping is enabled, pieces can move off one edge of the board and appear on the opposite edge, creating a toroidal topology.</p>
         </div>
       </div>
       <div class="dialog-buttons">
@@ -95,6 +96,18 @@
             <button type="button" id="resetGapsBtn" class="btn">Reset Gaps</button>
             <button type="button" id="randomizeGapsBtn" class="btn">Randomize Gaps</button>
           </div>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="wrapHorizontalCheckbox" />
+            <span>Horizontal wrapping</span>
+          </label>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="wrapVerticalCheckbox" />
+            <span>Vertical wrapping</span>
+          </label>
         </div>
         <div class="settings-warning">
           <strong>Note:</strong> Changing the board shape will reset the puzzle to its solved state.
@@ -158,6 +171,18 @@
           <label>
             <input type="checkbox" id="randomizeGapsCheckbox" />
             <span>Randomize gaps</span>
+          </label>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="challengeWrapHorizontalCheckbox" />
+            <span>Horizontal wrapping</span>
+          </label>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="challengeWrapVerticalCheckbox" />
+            <span>Vertical wrapping</span>
           </label>
         </div>
         <div class="form-group">
