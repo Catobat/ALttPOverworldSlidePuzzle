@@ -2750,14 +2750,73 @@
     randomizeGapIdentities();
   });
 
+  /**
+   * Check if any large pieces are currently wrapped in the given direction
+   * @param {boolean} checkHorizontal - Check for horizontal wrapping
+   * @param {boolean} checkVertical - Check for vertical wrapping
+   * @returns {boolean} True if any large piece is wrapped in the specified direction
+   */
+  function hasWrappedLargePieces(checkHorizontal, checkVertical) {
+    const bigPieces = pieces.filter(p => p.type === 'big');
+    
+    for (const piece of bigPieces) {
+      // Calculate all 4 cell positions with normalization
+      const cells = [
+        normalizeCoords(piece.x, piece.y),           // Top-left
+        normalizeCoords(piece.x + 1, piece.y),       // Top-right
+        normalizeCoords(piece.x, piece.y + 1),       // Bottom-left
+        normalizeCoords(piece.x + 1, piece.y + 1)    // Bottom-right
+      ];
+      
+      // Check if piece spans board edges (cells are not contiguous)
+      if (checkHorizontal) {
+        const spansHorizontal = (Math.abs(cells[0].x - cells[1].x) > 1 || Math.abs(cells[2].x - cells[3].x) > 1);
+        if (spansHorizontal) return true;
+      }
+      
+      if (checkVertical) {
+        const spansVertical = (Math.abs(cells[0].y - cells[2].y) > 1 || Math.abs(cells[1].y - cells[3].y) > 1);
+        if (spansVertical) return true;
+      }
+    }
+    
+    return false;
+  }
+
   // Wrapping checkbox handlers for Free Play
   wrapHorizontalCheckbox.addEventListener('change', () => {
-    wrapHorizontal = wrapHorizontalCheckbox.checked;
+    const newValue = wrapHorizontalCheckbox.checked;
+    
+    // If disabling horizontal wrapping, check for wrapped large pieces
+    if (!newValue && wrapHorizontal) {
+      // Check if any large pieces are currently wrapped horizontally
+      if (hasWrappedLargePieces(true, false)) {
+        // Reset board to solved state
+        wrapHorizontal = newValue;
+        resetState();
+        return;
+      }
+    }
+    
+    wrapHorizontal = newValue;
     renderAll(); // Re-render to show/hide duplicates
   });
 
   wrapVerticalCheckbox.addEventListener('change', () => {
-    wrapVertical = wrapVerticalCheckbox.checked;
+    const newValue = wrapVerticalCheckbox.checked;
+    
+    // If disabling vertical wrapping, check for wrapped large pieces
+    if (!newValue && wrapVertical) {
+      // Check if any large pieces are currently wrapped vertically
+      if (hasWrappedLargePieces(false, true)) {
+        // Reset board to solved state
+        wrapVertical = newValue;
+        resetState();
+        return;
+      }
+    }
+    
+    wrapVertical = newValue;
     renderAll(); // Re-render to show/hide duplicates
   });
 

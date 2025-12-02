@@ -459,6 +459,23 @@ body.challenge-above .challenge-stat-value {
   cursor: pointer;
 }
 
+.board-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.board-select-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.board-select-row .btn-primary {
+  white-space: nowrap;
+  padding: 8px 12px;
+  align-self: stretch;
+}
+
 .seed-input-group {
   display: flex;
   gap: 8px;
@@ -485,6 +502,7 @@ body.challenge-above .challenge-stat-value {
 
 .settings-warning {
   margin-top: 16px;
+  margin-bottom: 24px;
   padding: 12px;
   background: rgba(100, 200, 255, 0.1);
   border-left: 3px solid rgb(100, 200, 255);

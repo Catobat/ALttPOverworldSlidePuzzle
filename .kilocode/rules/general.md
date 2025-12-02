@@ -125,6 +125,10 @@ The game supports optional horizontal and vertical wrapping, creating a toroidal
 - `wrapVertical`: Boolean flag for vertical wrapping state
 - Settings persist in localStorage
 - Checkboxes appear in Settings dialog below Random Gaps section
+- **Safety Check**: When disabling wrapping, checks if any large pieces are currently wrapped in that direction
+  - If wrapped pieces are found, automatically resets the board to solved state
+  - Prevents invalid board states where large pieces span edges without wrapping enabled
+  - Uses `hasWrappedLargePieces()` helper function to detect wrapped pieces
 
 **Challenge Mode**:
 - `challengeWrapHorizontal`: Separate flag for challenge wrapping state
