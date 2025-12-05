@@ -37,6 +37,7 @@
       {x: 7, y: 6},
       {x: 7, y: 7}
     ],
+    largeGapIdentities: [], // Large gap identity positions (array of {x, y} for top-left corners)
     largePieces: [      // Large piece top-left corners (array of {x, y})
       {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
       {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
@@ -58,6 +59,7 @@
       {x: 15, y: 6},
       {x: 15, y: 7}
     ],
+    largeGapIdentities: [], // Large gap identity positions (array of {x, y} for top-left corners)
     largePieces: [      // Left half: same as default
       {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
       {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
@@ -83,6 +85,7 @@
       {x: 7, y: 14},
       {x: 7, y: 15}
     ],
+    largeGapIdentities: [], // Large gap identity positions (array of {x, y} for top-left corners)
     largePieces: [      // Top half: same as default
       {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
       {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
@@ -96,11 +99,32 @@
     wrapVertical: false     // Enable vertical wrapping
   };
   
+  const largeGapBoard = {
+    width: 8,           // Board width in tiles
+    height: 8,          // Board height in tiles
+    imageMode: 'single', // 'single', 'horizontal', or 'vertical'
+    images: {
+      primary: 'lightworld.png'  // Single image for entire board
+    },
+    gapIdentities: [],  // No small gaps
+    largeGapIdentities: [    // Large gap identity positions (array of {x, y} for top-left corners)
+      {x: 0, y: 6}
+    ],
+    largePieces: [      // Large piece top-left corners (array of {x, y})
+      {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
+      {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
+      {x: 5, y: 6}  // Removed (0,6) since it's now a large gap
+    ],
+    wrapHorizontal: false,  // Enable horizontal wrapping
+    wrapVertical: false     // Enable vertical wrapping
+  };
+  
   // Board registry for easy lookup
   const boardRegistry = {
     'default': defaultBoard,
     'horizontal': horizontalBoard,
-    'vertical': verticalBoard
+    'vertical': verticalBoard,
+    'largegap': largeGapBoard
   };
   
   // Currently active board configuration
@@ -179,8 +203,8 @@
 
   // State - Unified piece system
   // All pieces (including gaps) stored in a single array
-  let grid; // 2D array: null=empty; or {type:'small'|'big'|'gap', id, ox, oy}
-  let pieces = []; // Unified array: {id, type, isGap, x, y, homeX, homeY, el, innerEl, selected}
+  let grid; // 2D array: null=empty; or {isGap, isLarge, id, ox, oy}
+  let pieces = []; // Unified array: {id, isGap, isLarge, x, y, homeX, homeY, el, innerEl, selected}
   let pieceById = new Map(); // Unified lookup map
 
   // Game mode state
@@ -343,28 +367,78 @@
     return true;
   }
 
+
+  /**
+   * Calculate destination and freed cells for a large piece moving in a direction
+   * @param {Object} piece - Large piece object
+   * @param {number} dx - Direction X (-1, 0, or 1)
+   * @param {number} dy - Direction Y (-1, 0, or 1)
+   * @returns {Object|null} {destCells: [{x,y}, {x,y}], freedCells: [{x,y}, {x,y}]} or null if invalid
+   */
+  function calculateLargePieceDestination(piece, dx, dy) {
+    let dest = [], freed = [];
+    
+    if (dx === 1) { // right
+      if (!wrapHorizontal && piece.x + 2 >= boardConfig.width) return null;
+      const d1 = normalizeCoords(piece.x + 2, piece.y);
+      const d2 = normalizeCoords(piece.x + 2, piece.y + 1);
+      dest = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
+      const f1 = normalizeCoords(piece.x, piece.y);
+      const f2 = normalizeCoords(piece.x, piece.y + 1);
+      freed = [{x: f1.x, y: f1.y}, {x: f2.x, y: f2.y}];
+    } else if (dx === -1) { // left
+      if (!wrapHorizontal && piece.x - 1 < 0) return null;
+      const d1 = normalizeCoords(piece.x - 1, piece.y);
+      const d2 = normalizeCoords(piece.x - 1, piece.y + 1);
+      dest = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
+      const f1 = normalizeCoords(piece.x + 1, piece.y);
+      const f2 = normalizeCoords(piece.x + 1, piece.y + 1);
+      freed = [{x: f1.x, y: f1.y}, {x: f2.x, y: f2.y}];
+    } else if (dy === 1) { // down
+      if (!wrapVertical && piece.y + 2 >= boardConfig.height) return null;
+      const d1 = normalizeCoords(piece.x, piece.y + 2);
+      const d2 = normalizeCoords(piece.x + 1, piece.y + 2);
+      dest = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
+      const f1 = normalizeCoords(piece.x, piece.y);
+      const f2 = normalizeCoords(piece.x + 1, piece.y);
+      freed = [{x: f1.x, y: f1.y}, {x: f2.x, y: f2.y}];
+    } else if (dy === -1) { // up
+      if (!wrapVertical && piece.y - 1 < 0) return null;
+      const d1 = normalizeCoords(piece.x, piece.y - 1);
+      const d2 = normalizeCoords(piece.x + 1, piece.y - 1);
+      dest = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
+      const f1 = normalizeCoords(piece.x, piece.y + 1);
+      const f2 = normalizeCoords(piece.x + 1, piece.y + 1);
+      freed = [{x: f1.x, y: f1.y}, {x: f2.x, y: f2.y}];
+    } else {
+      return null;
+    }
+    
+    return { destCells: dest, freedCells: freed };
+  }
+
   /**
    * Helper function to create a piece (tile or gap)
-   * @param {string} type - 'small', 'big', or 'gap'
+   * @param {boolean} isGap - Whether this is a gap
+   * @param {boolean} isLarge - Whether this is a large piece/gap
    * @param {string} id - Piece ID
    * @param {number} x - X position
    * @param {number} y - Y position
    * @returns {Object} Piece object
    */
-  function createPiece(type, id, x, y) {
-    const isGap = (type === 'gap');
+  function createPiece(isGap, isLarge, id, x, y) {
     const el = document.createElement('div');
     let innerEl = null;
     
     if (isGap) {
       // Gap: create wrapper + inner element
-      el.className = 'gap-wrapper';
+      el.className = isLarge ? 'gap-wrapper big' : 'gap-wrapper';
       innerEl = document.createElement('div');
-      innerEl.className = 'gap';
+      innerEl.className = isLarge ? 'gap big' : 'gap';
       el.appendChild(innerEl);
     } else {
       // Regular piece
-      el.className = `tile ${type}`;
+      el.className = isLarge ? 'tile big' : 'tile small';
     }
     
     // Set background on appropriate element
@@ -378,8 +452,8 @@
     
     return {
       id,
-      type,
       isGap,
+      isLarge,
       x,
       y,
       homeX: x,
@@ -394,9 +468,16 @@
     pieces = [];
     pieceById.clear();
 
-    // Make a quick mask for big home coverage
+    // Make a quick mask for big home coverage (both large pieces and large gaps)
     const covered = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(false));
     boardConfig.largePieces.forEach(({x,y})=>{
+      for(let dy=0; dy<2; dy++){
+        for(let dx=0; dx<2; dx++){
+          covered[y+dy][x+dx] = true;
+        }
+      }
+    });
+    boardConfig.largeGapIdentities.forEach(({x,y})=>{
       for(let dy=0; dy<2; dy++){
         for(let dx=0; dx<2; dx++){
           covered[y+dy][x+dx] = true;
@@ -406,12 +487,19 @@
     
     // Create big pieces first
     boardConfig.largePieces.forEach((home, i) => {
-      const piece = createPiece('big', `B${i}`, home.x, home.y);
+      const piece = createPiece(false, true, `B${i}`, home.x, home.y);
       pieces.push(piece);
       pieceById.set(piece.id, piece);
     });
 
-    // Create small pieces AND gaps
+    // Create large gaps
+    boardConfig.largeGapIdentities.forEach((home, i) => {
+      const piece = createPiece(true, true, `BG${i}`, home.x, home.y);
+      pieces.push(piece);
+      pieceById.set(piece.id, piece);
+    });
+
+    // Create small pieces AND small gaps
     const isGapIdentity = (x,y) => boardConfig.gapIdentities.some(g => g.x===x && g.y===y);
     let sIdx = 0;
     let gIdx = 0;
@@ -420,10 +508,9 @@
         if(covered[y][x]) continue;
         
         const isGap = isGapIdentity(x,y);
-        const type = isGap ? 'gap' : 'small';
         const id = isGap ? `G${gIdx++}` : `S${sIdx++}`;
         
-        const piece = createPiece(type, id, x, y);
+        const piece = createPiece(isGap, false, id, x, y);
         pieces.push(piece);
         pieceById.set(piece.id, piece);
       }
@@ -438,13 +525,14 @@
     grid = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(null));
     
     for (const piece of pieces) {
-      if (piece.type === 'big') {
-        // Big piece occupies 2×2 cells (with wrapping support)
+      if (piece.isLarge) {
+        // Large piece or large gap occupies 2×2 cells (with wrapping support)
         for(let dy=0; dy<2; dy++) {
           for(let dx=0; dx<2; dx++) {
             const cellPos = normalizeCoords(piece.x + dx, piece.y + dy);
             grid[cellPos.y][cellPos.x] = {
-              type: 'big',
+              isGap: piece.isGap,
+              isLarge: piece.isLarge,
               id: piece.id,
               ox: dx,
               oy: dy
@@ -452,9 +540,10 @@
           }
         }
       } else {
-        // Small piece or gap occupies 1 cell
+        // Small piece or small gap occupies 1 cell
         grid[piece.y][piece.x] = {
-          type: piece.type,  // 'small' or 'gap'
+          isGap: piece.isGap,
+          isLarge: piece.isLarge,
           id: piece.id
         };
       }
@@ -504,11 +593,10 @@
     for (const piece of currentGaps) {
       // Convert gap to tile - keep identity and position
       piece.isGap = false;
-      piece.type = 'small';
       
       // Update DOM structure: replace gap-wrapper with tile
       const newEl = document.createElement('div');
-      newEl.className = 'tile small';
+      newEl.className = piece.isLarge ? 'tile big' : 'tile small';
       
       // Use existing identity for background (homeX, homeY unchanged)
       const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
@@ -523,14 +611,28 @@
       piece.selected = false;
     }
     
-    // Now find pieces with the original gap identities and convert them to gaps
+    // Now find pieces with the original small gap identities and convert them to gaps
     const newGapPieces = [];
     for (const gapIdentity of boardConfig.gapIdentities) {
       // Find the piece with this identity (homeX, homeY)
       const piece = pieces.find(p =>
         p.homeX === gapIdentity.x &&
         p.homeY === gapIdentity.y &&
-        (p.type === 'small' || p.type === 'gap')
+        !p.isLarge
+      );
+      
+      if (piece) {
+        newGapPieces.push(piece);
+      }
+    }
+    
+    // Find pieces with the original large gap identities and convert them to large gaps
+    for (const largeGapIdentity of boardConfig.largeGapIdentities) {
+      // Find the piece with this identity (homeX, homeY)
+      const piece = pieces.find(p =>
+        p.homeX === largeGapIdentity.x &&
+        p.homeY === largeGapIdentity.y &&
+        p.isLarge
       );
       
       if (piece) {
@@ -542,13 +644,12 @@
     for (const piece of newGapPieces) {
       // Convert tile to gap - keep identity and position
       piece.isGap = true;
-      piece.type = 'gap';
       
       // Update DOM structure: replace tile with gap-wrapper
       const newEl = document.createElement('div');
-      newEl.className = 'gap-wrapper';
+      newEl.className = piece.isLarge ? 'gap-wrapper big' : 'gap-wrapper';
       const innerEl = document.createElement('div');
-      innerEl.className = 'gap';
+      innerEl.className = piece.isLarge ? 'gap big' : 'gap';
       newEl.appendChild(innerEl);
       
       // Use existing identity for background (homeX, homeY unchanged)
@@ -577,28 +678,40 @@
   /**
    * Shared function to randomize which pieces act as gaps.
    * Toggles isGap flag on pieces to convert between gaps and tiles.
+   * Keeps the number of small gaps and large gaps the same, but randomizes which pieces act as gaps.
    * @param {Function} randomInt - Random integer function (for seeded or unseeded randomness)
    */
   function performGapRandomization(randomInt) {
-    const numGaps = boardConfig.gapIdentities.length;
+    const numSmallGaps = boardConfig.gapIdentities.length;
+    const numLargeGaps = boardConfig.largeGapIdentities.length;
 
-    // Filter small pieces only (current gaps and small tiles)
-    const smallPieces = pieces.filter(p => p.type === 'small' || p.type === 'gap');
+    // Filter small pieces only (current small gaps and small tiles)
+    const smallPieces = pieces.filter(p => !p.isLarge);
     
-    // Randomly select which pieces should be gaps
-    const shuffled = [...smallPieces];
-    for (let i = shuffled.length - 1; i > 0; i--) {
+    // Filter large pieces only (current large gaps and large tiles)
+    const largePieces = pieces.filter(p => p.isLarge);
+    
+    // Randomly select which small pieces should be gaps
+    const shuffledSmall = [...smallPieces];
+    for (let i = shuffledSmall.length - 1; i > 0; i--) {
       const j = randomInt(i + 1);
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      [shuffledSmall[i], shuffledSmall[j]] = [shuffledSmall[j], shuffledSmall[i]];
     }
-    const newGapPieces = shuffled.slice(0, numGaps);
+    const newSmallGapPieces = shuffledSmall.slice(0, numSmallGaps);
+    
+    // Randomly select which large pieces should be gaps
+    const shuffledLarge = [...largePieces];
+    for (let i = shuffledLarge.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      [shuffledLarge[i], shuffledLarge[j]] = [shuffledLarge[j], shuffledLarge[i]];
+    }
+    const newLargeGapPieces = shuffledLarge.slice(0, numLargeGaps);
     
     // Convert all small pieces to regular tiles first
     for (const piece of smallPieces) {
       if (piece.isGap) {
         // Convert gap to tile - keep identity (homeX, homeY)
         piece.isGap = false;
-        piece.type = 'small';
         
         // Update DOM structure: replace gap-wrapper with tile
         const newEl = document.createElement('div');
@@ -618,11 +731,34 @@
       }
     }
     
-    // Convert selected pieces to gaps - keep their identities
-    for (const piece of newGapPieces) {
+    // Convert all large pieces to regular tiles first
+    for (const piece of largePieces) {
+      if (piece.isGap) {
+        // Convert large gap to large tile - keep identity (homeX, homeY)
+        piece.isGap = false;
+        
+        // Update DOM structure: replace gap-wrapper with tile
+        const newEl = document.createElement('div');
+        newEl.className = 'tile big';
+        
+        // Use existing identity for background (homeX, homeY unchanged)
+        const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+        newEl.style.backgroundImage = `url("${image}")`;
+        newEl.style.backgroundSize = bgSize;
+        newEl.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+        
+        // Replace in DOM
+        piece.el.parentNode.replaceChild(newEl, piece.el);
+        piece.el = newEl;
+        piece.innerEl = null;
+        piece.selected = false;
+      }
+    }
+    
+    // Convert selected small pieces to gaps - keep their identities
+    for (const piece of newSmallGapPieces) {
       // Convert tile to gap - keep identity (homeX, homeY)
       piece.isGap = true;
-      piece.type = 'gap';
       
       // DO NOT change homeX/homeY - pieces keep their identities
       
@@ -646,9 +782,37 @@
       piece.selected = false;
     }
     
-    // Select first gap
-    if (newGapPieces.length > 0) {
-      newGapPieces[0].selected = true;
+    // Convert selected large pieces to large gaps - keep their identities
+    for (const piece of newLargeGapPieces) {
+      // Convert large tile to large gap - keep identity (homeX, homeY)
+      piece.isGap = true;
+      
+      // DO NOT change homeX/homeY - pieces keep their identities
+      
+      // Update DOM structure: replace tile with gap-wrapper
+      const newEl = document.createElement('div');
+      newEl.className = 'gap-wrapper big';
+      const innerEl = document.createElement('div');
+      innerEl.className = 'gap big';
+      newEl.appendChild(innerEl);
+      
+      // Use existing identity for background (homeX, homeY unchanged)
+      const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+      innerEl.style.backgroundImage = `url("${image}")`;
+      innerEl.style.backgroundSize = bgSize;
+      innerEl.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+      
+      // Replace in DOM
+      piece.el.parentNode.replaceChild(newEl, piece.el);
+      piece.el = newEl;
+      piece.innerEl = innerEl;
+      piece.selected = false;
+    }
+    
+    // Combine all new gaps and select first one
+    const allNewGaps = [...newSmallGapPieces, ...newLargeGapPieces];
+    if (allNewGaps.length > 0) {
+      allNewGaps[0].selected = true;
     }
 
     // Rebuild grid with new gap positions
@@ -939,8 +1103,8 @@
       const duplicates = boardEl.querySelectorAll(`[data-duplicate-of="${piece.id}"]`);
       duplicates.forEach(dup => dup.remove());
       
-      if (piece.type === 'big') {
-        // For large pieces with wrapping, we need to render segments based on wrap direction
+      if (piece.isLarge) {
+        // For large pieces/gaps with wrapping, we need to render segments based on wrap direction
         // Calculate all 4 cell positions with normalization
         const cells = [
           normalizeCoords(piece.x, piece.y),           // Top-left
@@ -956,7 +1120,7 @@
           (Math.abs(cells[0].y - cells[2].y) > 1 || Math.abs(cells[1].y - cells[3].y) > 1));
         
         if (spansHorizontal && spansVertical) {
-          // Piece spans both directions - render as 4 individual 1×1 cells
+          // Piece/gap spans both directions - render as 4 individual 1×1 cells
           piece.el.style.display = 'none';
           
           const offsets = [
@@ -970,106 +1134,229 @@
             const cell = cells[i];
             const offset = offsets[i];
             
-            const dup = document.createElement('div');
-            dup.className = 'tile big-cell';
-            dup.setAttribute('data-duplicate-of', piece.id);
-            dup.setAttribute('data-cell-offset', `${offset.ox},${offset.oy}`);
-            
-            dup.style.left = `${cell.x * tilePx}px`;
-            dup.style.top = `${cell.y * tilePx}px`;
-            dup.style.width = `${tilePx}px`;
-            dup.style.height = `${tilePx}px`;
-            
-            const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
-            dup.style.backgroundImage = `url("${image}")`;
-            dup.style.backgroundSize = bgSize;
-            dup.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + offset.ox, piece.homeY + offset.oy);
-            
-            boardEl.appendChild(dup);
+            if (piece.isGap) {
+              // Large gap cell
+              const dupWrapper = document.createElement('div');
+              dupWrapper.className = 'gap-wrapper big-cell';
+              dupWrapper.setAttribute('data-duplicate-of', piece.id);
+              dupWrapper.setAttribute('data-cell-offset', `${offset.ox},${offset.oy}`);
+              
+              const dupInner = document.createElement('div');
+              dupInner.className = 'gap';
+              dupWrapper.appendChild(dupInner);
+              
+              dupWrapper.style.left = `${cell.x * tilePx}px`;
+              dupWrapper.style.top = `${cell.y * tilePx}px`;
+              dupWrapper.style.width = `${tilePx}px`;
+              dupWrapper.style.height = `${tilePx}px`;
+              
+              const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+              dupInner.style.backgroundImage = `url("${image}")`;
+              dupInner.style.backgroundSize = bgSize;
+              dupInner.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + offset.ox, piece.homeY + offset.oy);
+              
+              boardEl.appendChild(dupWrapper);
+            } else {
+              // Large piece cell
+              const dup = document.createElement('div');
+              dup.className = 'tile big-cell';
+              dup.setAttribute('data-duplicate-of', piece.id);
+              dup.setAttribute('data-cell-offset', `${offset.ox},${offset.oy}`);
+              
+              dup.style.left = `${cell.x * tilePx}px`;
+              dup.style.top = `${cell.y * tilePx}px`;
+              dup.style.width = `${tilePx}px`;
+              dup.style.height = `${tilePx}px`;
+              
+              const { image, bgSize } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+              dup.style.backgroundImage = `url("${image}")`;
+              dup.style.backgroundSize = bgSize;
+              dup.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + offset.ox, piece.homeY + offset.oy);
+              
+              boardEl.appendChild(dup);
+            }
           }
         } else if (spansHorizontal) {
-          // Piece spans horizontally only - render as 2 vertical strips (1×2 each)
+          // Piece/gap spans horizontally only - render as 2 vertical strips (1×2 each)
           piece.el.style.display = 'none';
           
-          // Left strip (cells 0 and 2: top-left and bottom-left)
-          const leftStrip = document.createElement('div');
-          leftStrip.className = 'tile big';
-          leftStrip.setAttribute('data-duplicate-of', piece.id);
-          leftStrip.setAttribute('data-strip', 'left');
-          
-          leftStrip.style.left = `${cells[0].x * tilePx}px`;
-          leftStrip.style.top = `${cells[0].y * tilePx}px`;
-          leftStrip.style.width = `${tilePx}px`;
-          leftStrip.style.height = `${2 * tilePx}px`;
-          
-          const { image: imgLeft, bgSize: bgSizeLeft } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
-          leftStrip.style.backgroundImage = `url("${imgLeft}")`;
-          leftStrip.style.backgroundSize = bgSizeLeft;
-          leftStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
-          
-          boardEl.appendChild(leftStrip);
-          
-          // Right strip (cells 1 and 3: top-right and bottom-right)
-          const rightStrip = document.createElement('div');
-          rightStrip.className = 'tile big';
-          rightStrip.setAttribute('data-duplicate-of', piece.id);
-          rightStrip.setAttribute('data-strip', 'right');
-          
-          rightStrip.style.left = `${cells[1].x * tilePx}px`;
-          rightStrip.style.top = `${cells[1].y * tilePx}px`;
-          rightStrip.style.width = `${tilePx}px`;
-          rightStrip.style.height = `${2 * tilePx}px`;
-          
-          const { image: imgRight, bgSize: bgSizeRight } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
-          rightStrip.style.backgroundImage = `url("${imgRight}")`;
-          rightStrip.style.backgroundSize = bgSizeRight;
-          rightStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + 1, piece.homeY);
-          
-          boardEl.appendChild(rightStrip);
+          if (piece.isGap) {
+            // Large gap - left strip
+            const leftWrapper = document.createElement('div');
+            leftWrapper.className = 'gap-wrapper big';
+            leftWrapper.setAttribute('data-duplicate-of', piece.id);
+            leftWrapper.setAttribute('data-strip', 'left');
+            
+            const leftInner = document.createElement('div');
+            leftInner.className = 'gap big';
+            leftWrapper.appendChild(leftInner);
+            
+            leftWrapper.style.left = `${cells[0].x * tilePx}px`;
+            leftWrapper.style.top = `${cells[0].y * tilePx}px`;
+            leftWrapper.style.width = `${tilePx}px`;
+            leftWrapper.style.height = `${2 * tilePx}px`;
+            
+            const { image: imgLeft, bgSize: bgSizeLeft } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            leftInner.style.backgroundImage = `url("${imgLeft}")`;
+            leftInner.style.backgroundSize = bgSizeLeft;
+            leftInner.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+            
+            boardEl.appendChild(leftWrapper);
+            
+            // Large gap - right strip
+            const rightWrapper = document.createElement('div');
+            rightWrapper.className = 'gap-wrapper big';
+            rightWrapper.setAttribute('data-duplicate-of', piece.id);
+            rightWrapper.setAttribute('data-strip', 'right');
+            
+            const rightInner = document.createElement('div');
+            rightInner.className = 'gap big';
+            rightWrapper.appendChild(rightInner);
+            
+            rightWrapper.style.left = `${cells[1].x * tilePx}px`;
+            rightWrapper.style.top = `${cells[1].y * tilePx}px`;
+            rightWrapper.style.width = `${tilePx}px`;
+            rightWrapper.style.height = `${2 * tilePx}px`;
+            
+            const { image: imgRight, bgSize: bgSizeRight } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            rightInner.style.backgroundImage = `url("${imgRight}")`;
+            rightInner.style.backgroundSize = bgSizeRight;
+            rightInner.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + 1, piece.homeY);
+            
+            boardEl.appendChild(rightWrapper);
+          } else {
+            // Large piece - left strip
+            const leftStrip = document.createElement('div');
+            leftStrip.className = 'tile big';
+            leftStrip.setAttribute('data-duplicate-of', piece.id);
+            leftStrip.setAttribute('data-strip', 'left');
+            
+            leftStrip.style.left = `${cells[0].x * tilePx}px`;
+            leftStrip.style.top = `${cells[0].y * tilePx}px`;
+            leftStrip.style.width = `${tilePx}px`;
+            leftStrip.style.height = `${2 * tilePx}px`;
+            
+            const { image: imgLeft, bgSize: bgSizeLeft } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            leftStrip.style.backgroundImage = `url("${imgLeft}")`;
+            leftStrip.style.backgroundSize = bgSizeLeft;
+            leftStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+            
+            boardEl.appendChild(leftStrip);
+            
+            // Large piece - right strip
+            const rightStrip = document.createElement('div');
+            rightStrip.className = 'tile big';
+            rightStrip.setAttribute('data-duplicate-of', piece.id);
+            rightStrip.setAttribute('data-strip', 'right');
+            
+            rightStrip.style.left = `${cells[1].x * tilePx}px`;
+            rightStrip.style.top = `${cells[1].y * tilePx}px`;
+            rightStrip.style.width = `${tilePx}px`;
+            rightStrip.style.height = `${2 * tilePx}px`;
+            
+            const { image: imgRight, bgSize: bgSizeRight } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            rightStrip.style.backgroundImage = `url("${imgRight}")`;
+            rightStrip.style.backgroundSize = bgSizeRight;
+            rightStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX + 1, piece.homeY);
+            
+            boardEl.appendChild(rightStrip);
+          }
         } else if (spansVertical) {
-          // Piece spans vertically only - render as 2 horizontal strips (2×1 each)
+          // Piece/gap spans vertically only - render as 2 horizontal strips (2×1 each)
           piece.el.style.display = 'none';
           
-          // Top strip (cells 0 and 1: top-left and top-right)
-          const topStrip = document.createElement('div');
-          topStrip.className = 'tile big';
-          topStrip.setAttribute('data-duplicate-of', piece.id);
-          topStrip.setAttribute('data-strip', 'top');
-          
-          topStrip.style.left = `${cells[0].x * tilePx}px`;
-          topStrip.style.top = `${cells[0].y * tilePx}px`;
-          topStrip.style.width = `${2 * tilePx}px`;
-          topStrip.style.height = `${tilePx}px`;
-          
-          const { image: imgTop, bgSize: bgSizeTop } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
-          topStrip.style.backgroundImage = `url("${imgTop}")`;
-          topStrip.style.backgroundSize = bgSizeTop;
-          topStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
-          
-          boardEl.appendChild(topStrip);
-          
-          // Bottom strip (cells 2 and 3: bottom-left and bottom-right)
-          const bottomStrip = document.createElement('div');
-          bottomStrip.className = 'tile big';
-          bottomStrip.setAttribute('data-duplicate-of', piece.id);
-          bottomStrip.setAttribute('data-strip', 'bottom');
-          
-          bottomStrip.style.left = `${cells[2].x * tilePx}px`;
-          bottomStrip.style.top = `${cells[2].y * tilePx}px`;
-          bottomStrip.style.width = `${2 * tilePx}px`;
-          bottomStrip.style.height = `${tilePx}px`;
-          
-          const { image: imgBottom, bgSize: bgSizeBottom } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
-          bottomStrip.style.backgroundImage = `url("${imgBottom}")`;
-          bottomStrip.style.backgroundSize = bgSizeBottom;
-          bottomStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY + 1);
-          
-          boardEl.appendChild(bottomStrip);
+          if (piece.isGap) {
+            // Large gap - top strip
+            const topWrapper = document.createElement('div');
+            topWrapper.className = 'gap-wrapper big';
+            topWrapper.setAttribute('data-duplicate-of', piece.id);
+            topWrapper.setAttribute('data-strip', 'top');
+            
+            const topInner = document.createElement('div');
+            topInner.className = 'gap big';
+            topWrapper.appendChild(topInner);
+            
+            topWrapper.style.left = `${cells[0].x * tilePx}px`;
+            topWrapper.style.top = `${cells[0].y * tilePx}px`;
+            topWrapper.style.width = `${2 * tilePx}px`;
+            topWrapper.style.height = `${tilePx}px`;
+            
+            const { image: imgTop, bgSize: bgSizeTop } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            topInner.style.backgroundImage = `url("${imgTop}")`;
+            topInner.style.backgroundSize = bgSizeTop;
+            topInner.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+            
+            boardEl.appendChild(topWrapper);
+            
+            // Large gap - bottom strip
+            const bottomWrapper = document.createElement('div');
+            bottomWrapper.className = 'gap-wrapper big';
+            bottomWrapper.setAttribute('data-duplicate-of', piece.id);
+            bottomWrapper.setAttribute('data-strip', 'bottom');
+            
+            const bottomInner = document.createElement('div');
+            bottomInner.className = 'gap big';
+            bottomWrapper.appendChild(bottomInner);
+            
+            bottomWrapper.style.left = `${cells[2].x * tilePx}px`;
+            bottomWrapper.style.top = `${cells[2].y * tilePx}px`;
+            bottomWrapper.style.width = `${2 * tilePx}px`;
+            bottomWrapper.style.height = `${tilePx}px`;
+            
+            const { image: imgBottom, bgSize: bgSizeBottom } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            bottomInner.style.backgroundImage = `url("${imgBottom}")`;
+            bottomInner.style.backgroundSize = bgSizeBottom;
+            bottomInner.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY + 1);
+            
+            boardEl.appendChild(bottomWrapper);
+          } else {
+            // Large piece - top strip
+            const topStrip = document.createElement('div');
+            topStrip.className = 'tile big';
+            topStrip.setAttribute('data-duplicate-of', piece.id);
+            topStrip.setAttribute('data-strip', 'top');
+            
+            topStrip.style.left = `${cells[0].x * tilePx}px`;
+            topStrip.style.top = `${cells[0].y * tilePx}px`;
+            topStrip.style.width = `${2 * tilePx}px`;
+            topStrip.style.height = `${tilePx}px`;
+            
+            const { image: imgTop, bgSize: bgSizeTop } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            topStrip.style.backgroundImage = `url("${imgTop}")`;
+            topStrip.style.backgroundSize = bgSizeTop;
+            topStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY);
+            
+            boardEl.appendChild(topStrip);
+            
+            // Large piece - bottom strip
+            const bottomStrip = document.createElement('div');
+            bottomStrip.className = 'tile big';
+            bottomStrip.setAttribute('data-duplicate-of', piece.id);
+            bottomStrip.setAttribute('data-strip', 'bottom');
+            
+            bottomStrip.style.left = `${cells[2].x * tilePx}px`;
+            bottomStrip.style.top = `${cells[2].y * tilePx}px`;
+            bottomStrip.style.width = `${2 * tilePx}px`;
+            bottomStrip.style.height = `${tilePx}px`;
+            
+            const { image: imgBottom, bgSize: bgSizeBottom } = getBackgroundStyleForTile(piece.homeX, piece.homeY);
+            bottomStrip.style.backgroundImage = `url("${imgBottom}")`;
+            bottomStrip.style.backgroundSize = bgSizeBottom;
+            bottomStrip.style.backgroundPosition = getBackgroundPositionCalc(piece.homeX, piece.homeY + 1);
+            
+            boardEl.appendChild(bottomStrip);
+          }
         } else {
-          // Piece doesn't span edge - render normally as 2×2
+          // Piece/gap doesn't span edge - render normally as 2×2
           piece.el.style.display = '';
           piece.el.style.left = `${piece.x * tilePx}px`;
           piece.el.style.top = `${piece.y * tilePx}px`;
+          
+          // Update selection visual for large gaps
+          if (piece.isGap) {
+            const showSelection = piece.selected && !(gameMode === 'challenge' && challengeSolved);
+            piece.el.classList.toggle('selected', showSelection);
+          }
         }
       } else {
         // Small pieces and gaps - render normally
@@ -1111,12 +1398,22 @@
     if (!selectedGap) return false;
     
     // dir: 'up'|'down'|'left'|'right'
+    // For large gaps, we need to look beyond the gap's 2x2 extent
     let fromX = selectedGap.x, fromY = selectedGap.y, dx = 0, dy = 0;
-    if (dir === 'up') { fromY = selectedGap.y + 1; fromX = selectedGap.x; dx = 0; dy = -1; }
-    if (dir === 'down') { fromY = selectedGap.y - 1; fromX = selectedGap.x; dx = 0; dy = 1; }
-    if (dir === 'left') { fromX = selectedGap.x + 1; fromY = selectedGap.y; dx = -1; dy = 0; }
-    if (dir === 'right'){ fromX = selectedGap.x - 1; fromY = selectedGap.y; dx = 1; dy = 0; }
-
+    if (selectedGap.isLarge) {
+      // Large gap: look beyond the 2x2 extent
+      if (dir === 'up') { fromY = selectedGap.y + 2; fromX = selectedGap.x; dx = 0; dy = -1; }
+      if (dir === 'down') { fromY = selectedGap.y - 1; fromX = selectedGap.x; dx = 0; dy = 1; }
+      if (dir === 'left') { fromX = selectedGap.x + 2; fromY = selectedGap.y; dx = -1; dy = 0; }
+      if (dir === 'right'){ fromX = selectedGap.x - 1; fromY = selectedGap.y; dx = 1; dy = 0; }
+    } else {
+      // Small gap: normal offset
+      if (dir === 'up') { fromY = selectedGap.y + 1; fromX = selectedGap.x; dx = 0; dy = -1; }
+      if (dir === 'down') { fromY = selectedGap.y - 1; fromX = selectedGap.x; dx = 0; dy = 1; }
+      if (dir === 'left') { fromX = selectedGap.x + 1; fromY = selectedGap.y; dx = -1; dy = 0; }
+      if (dir === 'right'){ fromX = selectedGap.x - 1; fromY = selectedGap.y; dx = 1; dy = 0; }
+    }
+    
     // Apply wrapping to source coordinates
     const wrappedFrom = normalizeCoords(fromX, fromY);
     fromX = wrappedFrom.x;
@@ -1134,34 +1431,380 @@
     // Determine if we should skip rendering (during shuffle in Challenge Mode)
     const skipRender = isShuffling && gameMode === 'challenge';
     
-    // Check if source is another gap (gap swap)
-    if (sourceCell.type === 'gap') {
+    // Check if source is another gap (gap swap - small or large)
+    if (sourceCell.isGap) {
       const otherGap = pieceById.get(sourceCell.id);
-      // Swap positions
-      [selectedGap.x, selectedGap.y, otherGap.x, otherGap.y] =
-        [otherGap.x, otherGap.y, selectedGap.x, selectedGap.y];
       
-      // Incremental grid update: just swap the two cells
-      grid[selectedGap.y][selectedGap.x] = { type: 'gap', id: selectedGap.id };
-      grid[otherGap.y][otherGap.x] = { type: 'gap', id: otherGap.id };
+      // Check if both gaps are the same size (both small or both large)
+      if (selectedGap.isLarge === otherGap.isLarge) {
+        // Swap positions
+        [selectedGap.x, selectedGap.y, otherGap.x, otherGap.y] =
+          [otherGap.x, otherGap.y, selectedGap.x, selectedGap.y];
+        
+        if (selectedGap.isLarge) {
+          // Large gap swap: update all 4 cells for each gap
+          // Clear old positions
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const oldSelectedPos = normalizeCoords(otherGap.x + dx, otherGap.y + dy);
+              const oldOtherPos = normalizeCoords(selectedGap.x + dx, selectedGap.y + dy);
+              grid[oldSelectedPos.y][oldSelectedPos.x] = null;
+              grid[oldOtherPos.y][oldOtherPos.x] = null;
+            }
+          }
+          // Set new positions
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const newSelectedPos = normalizeCoords(selectedGap.x + dx, selectedGap.y + dy);
+              const newOtherPos = normalizeCoords(otherGap.x + dx, otherGap.y + dy);
+              grid[newSelectedPos.y][newSelectedPos.x] = { isGap: true, isLarge: true, id: selectedGap.id, ox: dx, oy: dy };
+              grid[newOtherPos.y][newOtherPos.x] = { isGap: true, isLarge: true, id: otherGap.id, ox: dx, oy: dy };
+            }
+          }
+        } else {
+          // Small gap swap: just swap the two cells
+          grid[selectedGap.y][selectedGap.x] = { isGap: true, isLarge: false, id: selectedGap.id };
+          grid[otherGap.y][otherGap.x] = { isGap: true, isLarge: false, id: otherGap.id };
+        }
+        
+        if (!skipRender) renderAll();
+        if (gameMode === 'challenge' && !isShuffling) {
+          challengeMoveCount++;
+          updateMoveCount();
+          if (checkWinCondition()) {
+            handleWin();
+          }
+        }
+        return true;
+      }
+      // If gaps are different sizes, fall through to check other movement options
+    }
+
+    // Check if selected gap is large
+    if (selectedGap.isLarge) {
+      // Large gap moving into 2 aligned small pieces/gaps
+      // Calculate direction vector for WHERE THE GAP WOULD MOVE
+      // Remember: dir is inverted - it specifies where to look for pieces, not where gap moves
+      // So we need to INVERT the direction for the gap's actual movement
+      let dx = 0, dy = 0;
+      if (dir === 'up') { dy = 1; }    // Look below (pieces move up), gap moves down
+      if (dir === 'down') { dy = -1; } // Look above (pieces move down), gap moves up
+      if (dir === 'left') { dx = 1; }  // Look right (pieces move left), gap moves right
+      if (dir === 'right') { dx = -1; } // Look left (pieces move right), gap moves left
       
-      if (!skipRender) renderAll();
-      if (gameMode === 'challenge' && !isShuffling) {
-        challengeMoveCount++;
-        updateMoveCount();
-        if (checkWinCondition()) {
-          handleWin();
+      // Check if large gap can move in this direction (boundary check for 2×2)
+      // Without wrapping, the new position must fit within board bounds
+      if (!wrapHorizontal) {
+        if (dx === 1 && selectedGap.x + 2 >= boardConfig.width) return false;
+        if (dx === -1 && selectedGap.x - 1 < 0) return false;
+      }
+      if (!wrapVertical) {
+        if (dy === 1 && selectedGap.y + 2 >= boardConfig.height) return false;
+        if (dy === -1 && selectedGap.y - 1 < 0) return false;
+      }
+      
+      // Calculate which cells to check for pieces that would move into the gap
+      // dir parameter tells us where to LOOK for pieces (inverted semantics)
+      // dir='down' means look ABOVE (at y-1), pieces move down, gap moves up
+      // dir='up' means look BELOW (at y+2), pieces move up, gap moves down
+      let destCells = [];
+      if (dir === 'left' || dir === 'right') {
+        // Horizontal: check for 2 vertically aligned cells
+        if (dir === 'right') {
+          // dir='right' means look LEFT (at x-1)
+          const cell1 = normalizeCoords(selectedGap.x - 1, selectedGap.y);
+          const cell2 = normalizeCoords(selectedGap.x - 1, selectedGap.y + 1);
+          destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+        } else {
+          // dir='left' means look RIGHT (at x+2)
+          const cell1 = normalizeCoords(selectedGap.x + 2, selectedGap.y);
+          const cell2 = normalizeCoords(selectedGap.x + 2, selectedGap.y + 1);
+          destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+        }
+      } else if (dir === 'up' || dir === 'down') {
+        // Vertical: check for 2 horizontally aligned cells
+        if (dir === 'down') {
+          // dir='down' means look ABOVE (at y-1)
+          const cell1 = normalizeCoords(selectedGap.x, selectedGap.y - 1);
+          const cell2 = normalizeCoords(selectedGap.x + 1, selectedGap.y - 1);
+          destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+        } else {
+          // dir='up' means look BELOW (at y+2)
+          const cell1 = normalizeCoords(selectedGap.x, selectedGap.y + 2);
+          const cell2 = normalizeCoords(selectedGap.x + 1, selectedGap.y + 2);
+          destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
         }
       }
-      return true;
+      
+      // Verify both destination cells exist and are small pieces or small gaps (not large pieces/gaps)
+      if (destCells.length === 2) {
+        const dest1Cell = grid[destCells[0].y]?.[destCells[0].x];
+        const dest2Cell = grid[destCells[1].y]?.[destCells[1].x];
+        
+        if (dest1Cell && dest2Cell &&
+            !dest1Cell.isLarge &&
+            !dest2Cell.isLarge) {
+          
+          // Get the pieces/gaps at destination
+          const piece1 = pieceById.get(dest1Cell.id);
+          const piece2 = pieceById.get(dest2Cell.id);
+          
+          if (piece1 && piece2) {
+            // Calculate freed cells (where the large gap currently is)
+            const freedCells = [
+              normalizeCoords(selectedGap.x, selectedGap.y),
+              normalizeCoords(selectedGap.x + 1, selectedGap.y),
+              normalizeCoords(selectedGap.x, selectedGap.y + 1),
+              normalizeCoords(selectedGap.x + 1, selectedGap.y + 1)
+            ];
+            
+            // Determine where each piece/gap should move
+            // The pieces should move THROUGH the gap to the far side
+            // The gap should move to where the pieces currently are
+            let map = [];
+            
+            // Calculate where pieces should end up (on the FAR side of the gap)
+            let targetCells = [];
+            if (dir === 'left' || dir === 'right') {
+              // Horizontal: pieces move through gap horizontally
+              if (dir === 'right') {
+                // Pieces move right, should end up at gap's right edge
+                targetCells = [
+                  normalizeCoords(selectedGap.x + 1, selectedGap.y),
+                  normalizeCoords(selectedGap.x + 1, selectedGap.y + 1)
+                ];
+              } else {
+                // Pieces move left, should end up at gap's left edge
+                targetCells = [
+                  normalizeCoords(selectedGap.x, selectedGap.y),
+                  normalizeCoords(selectedGap.x, selectedGap.y + 1)
+                ];
+              }
+              // Map pieces by y coordinate
+              map = [
+                { piece: piece1, target: targetCells.find(t => t.y === piece1.y) },
+                { piece: piece2, target: targetCells.find(t => t.y === piece2.y) }
+              ];
+            } else {
+              // Vertical: pieces move through gap vertically
+              if (dir === 'down') {
+                // Pieces move down, should end up at gap's bottom edge
+                targetCells = [
+                  normalizeCoords(selectedGap.x, selectedGap.y + 1),
+                  normalizeCoords(selectedGap.x + 1, selectedGap.y + 1)
+                ];
+              } else {
+                // Pieces move up, should end up at gap's top edge
+                targetCells = [
+                  normalizeCoords(selectedGap.x, selectedGap.y),
+                  normalizeCoords(selectedGap.x + 1, selectedGap.y)
+                ];
+              }
+              // Map pieces by x coordinate
+              map = [
+                { piece: piece1, target: targetCells.find(t => t.x === piece1.x) },
+                { piece: piece2, target: targetCells.find(t => t.x === piece2.x) }
+              ];
+            }
+            
+            if (map.length === 2 && map[0].target && map[1].target) {
+              // Move the large gap in the direction it should actually move
+              const oldGapX = selectedGap.x;
+              const oldGapY = selectedGap.y;
+              // Use the corrected dx, dy which represent the gap's actual movement
+              const newGapPos = normalizeCoords(selectedGap.x + dx, selectedGap.y + dy);
+              selectedGap.x = newGapPos.x;
+              selectedGap.y = newGapPos.y;
+              
+              // Move each piece/gap to its mapped target cell
+              for (const {piece, target} of map) {
+                piece.x = target.x;
+                piece.y = target.y;
+              }
+              
+              // Update grid: clear old large gap position (4 cells)
+              for (let gy = 0; gy < 2; gy++) {
+                for (let gx = 0; gx < 2; gx++) {
+                  const oldCell = normalizeCoords(oldGapX + gx, oldGapY + gy);
+                  grid[oldCell.y][oldCell.x] = null;
+                }
+              }
+              
+              // Set new large gap position (4 cells)
+              for (let gy = 0; gy < 2; gy++) {
+                for (let gx = 0; gx < 2; gx++) {
+                  const newCell = normalizeCoords(selectedGap.x + gx, selectedGap.y + gy);
+                  grid[newCell.y][newCell.x] = {
+                    isGap: true,
+                    isLarge: true,
+                    id: selectedGap.id,
+                    ox: gx,
+                    oy: gy
+                  };
+                }
+              }
+              
+              // Update moved pieces/gaps in grid
+              for (const {piece} of map) {
+                grid[piece.y][piece.x] = { isGap: piece.isGap, isLarge: false, id: piece.id };
+              }
+              
+              if (!skipRender) renderAll();
+              if (gameMode === 'challenge' && !isShuffling) {
+                challengeMoveCount++;
+                updateMoveCount();
+                if (checkWinCondition()) {
+                  handleWin();
+                }
+              }
+              return true;
+            }
+          }
+        }
+      }
     }
 
     // Regular piece movement (small or big)
     const movingPiece = pieceById.get(sourceCell.id);
     if (!movingPiece) return false;
 
-    if (movingPiece.type === 'small') {
-      // Move small piece into the selected gap (with wrapping)
+    if (!movingPiece.isLarge) {
+      // Small piece movement
+      // Check if this is part of 2 aligned small pieces moving into a large gap
+      if (selectedGap.isLarge) {
+        // Calculate direction vector
+        let dx = 0, dy = 0;
+        if (dir === 'up') { dy = -1; }
+        if (dir === 'down') { dy = 1; }
+        if (dir === 'left') { dx = -1; }
+        if (dir === 'right') { dx = 1; }
+        
+        // Find the other small piece that should move with this one
+        let otherPiecePos = null;
+        if (dx !== 0) {
+          // Horizontal movement: look for piece in same column, adjacent row
+          // Check both above and below
+          const above = normalizeCoords(fromX, fromY - 1);
+          const below = normalizeCoords(fromX, fromY + 1);
+          const aboveCell = grid[above.y]?.[above.x];
+          const belowCell = grid[below.y]?.[below.x];
+          
+          if (aboveCell && !aboveCell.isGap && !aboveCell.isLarge) {
+            otherPiecePos = above;
+          } else if (belowCell && !belowCell.isGap && !belowCell.isLarge) {
+            otherPiecePos = below;
+          }
+        } else if (dy !== 0) {
+          // Vertical movement: look for piece in same row, adjacent column
+          // Check both left and right
+          const left = normalizeCoords(fromX - 1, fromY);
+          const right = normalizeCoords(fromX + 1, fromY);
+          const leftCell = grid[left.y]?.[left.x];
+          const rightCell = grid[right.y]?.[right.x];
+          
+          if (leftCell && !leftCell.isGap && !leftCell.isLarge) {
+            otherPiecePos = left;
+          } else if (rightCell && !rightCell.isGap && !rightCell.isLarge) {
+            otherPiecePos = right;
+          }
+        }
+        
+        // If we found an aligned piece, check if both can move into the large gap
+        if (otherPiecePos) {
+          const otherPiece = pieceById.get(grid[otherPiecePos.y][otherPiecePos.x].id);
+          
+          // Check if both pieces would move into the large gap's cells
+          const piece1NewPos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
+          const piece2NewPos = normalizeCoords(otherPiece.x + dx, otherPiece.y + dy);
+          
+          // Get all 4 cells of the large gap
+          const gapCells = [
+            normalizeCoords(selectedGap.x, selectedGap.y),
+            normalizeCoords(selectedGap.x + 1, selectedGap.y),
+            normalizeCoords(selectedGap.x, selectedGap.y + 1),
+            normalizeCoords(selectedGap.x + 1, selectedGap.y + 1)
+          ];
+          
+          // Check if both new positions are within the large gap
+          const piece1InGap = gapCells.some(c => c.x === piece1NewPos.x && c.y === piece1NewPos.y);
+          const piece2InGap = gapCells.some(c => c.x === piece2NewPos.x && c.y === piece2NewPos.y);
+          
+          if (piece1InGap && piece2InGap) {
+            // Both pieces move into the large gap
+            // The 2 cells they DON'T occupy become the new gap position
+            const freedCells = gapCells.filter(c =>
+              !(c.x === piece1NewPos.x && c.y === piece1NewPos.y) &&
+              !(c.x === piece2NewPos.x && c.y === piece2NewPos.y)
+            );
+            
+            if (freedCells.length === 2) {
+              // Move both pieces
+              movingPiece.x = piece1NewPos.x;
+              movingPiece.y = piece1NewPos.y;
+              otherPiece.x = piece2NewPos.x;
+              otherPiece.y = piece2NewPos.y;
+              
+              // Move large gap to where the pieces came from
+              // The freed cells are the 2 cells within the gap that pieces didn't move into
+              // We need to find the 2x2 block that includes these freed cells
+              // The gap moves in the OPPOSITE direction from the pieces
+              if (dx !== 0) {
+                // Horizontal movement: freed cells share same x, differ in y
+                // Gap's x position is determined by which cells were freed
+                selectedGap.x = freedCells[0].x;
+                selectedGap.y = Math.min(freedCells[0].y, freedCells[1].y);
+              } else {
+                // Vertical movement: freed cells share same y, differ in x
+                // Gap's y position is determined by which cells were freed
+                selectedGap.x = Math.min(freedCells[0].x, freedCells[1].x);
+                selectedGap.y = freedCells[0].y;
+              }
+              
+              // Update grid: clear old positions
+              grid[fromY][fromX] = null;
+              grid[otherPiecePos.y][otherPiecePos.x] = null;
+              
+              // Clear old large gap position (4 cells)
+              for (const cell of gapCells) {
+                grid[cell.y][cell.x] = null;
+              }
+              
+              // Set new piece positions
+              grid[movingPiece.y][movingPiece.x] = { isGap: false, isLarge: false, id: movingPiece.id };
+              grid[otherPiece.y][otherPiece.x] = { isGap: false, isLarge: false, id: otherPiece.id };
+              
+              // Set new large gap position (4 cells)
+              for (let gy = 0; gy < 2; gy++) {
+                for (let gx = 0; gx < 2; gx++) {
+                  const newCell = normalizeCoords(selectedGap.x + gx, selectedGap.y + gy);
+                  grid[newCell.y][newCell.x] = {
+                    isGap: true,
+                    isLarge: true,
+                    id: selectedGap.id,
+                    ox: gx,
+                    oy: gy
+                  };
+                }
+              }
+              
+              if (!skipRender) renderAll();
+              if (gameMode === 'challenge' && !isShuffling) {
+                challengeMoveCount++;
+                updateMoveCount();
+                if (checkWinCondition()) {
+                  handleWin();
+                }
+              }
+              return true;
+            }
+          }
+        }
+        
+        // If we couldn't find a valid 2-piece move into large gap, reject the move
+        return false;
+      }
+      
+      // Move small piece into the selected small gap (with wrapping)
       const newPos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
       movingPiece.x = newPos.x;
       movingPiece.y = newPos.y;
@@ -1170,9 +1813,9 @@
       selectedGap.x = fromX;
       selectedGap.y = fromY;
 
-      // Incremental grid update: swap the two cells
-      grid[movingPiece.y][movingPiece.x] = { type: 'small', id: movingPiece.id };
-      grid[selectedGap.y][selectedGap.x] = { type: 'gap', id: selectedGap.id };
+      // Incremental grid update for small gap: just swap the two cells
+      grid[movingPiece.y][movingPiece.x] = { isGap: false, isLarge: false, id: movingPiece.id };
+      grid[selectedGap.y][selectedGap.x] = { isGap: true, isLarge: false, id: selectedGap.id };
       
       if (!skipRender) renderAll();
       if (gameMode === 'challenge' && !isShuffling) {
@@ -1185,54 +1828,87 @@
       return true;
     }
 
-    if (movingPiece.type === 'big') {
-      // Determine destination face cells (must be both gaps), and freed cells after move
-      let dest = [], freed = [];
-      if (dx === 1) { // right
-        if (!wrapHorizontal && movingPiece.x + 2 >= boardConfig.width) return false;
-        const d1 = normalizeCoords(movingPiece.x+2, movingPiece.y);
-        const d2 = normalizeCoords(movingPiece.x+2, movingPiece.y+1);
-        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
-        // Normalize freed cells too
-        const f1 = normalizeCoords(movingPiece.x, movingPiece.y);
-        const f2 = normalizeCoords(movingPiece.x, movingPiece.y+1);
-        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
-      } else if (dx === -1) { // left
-        if (!wrapHorizontal && movingPiece.x - 1 < 0) return false;
-        const d1 = normalizeCoords(movingPiece.x-1, movingPiece.y);
-        const d2 = normalizeCoords(movingPiece.x-1, movingPiece.y+1);
-        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
-        // Normalize freed cells too
-        const f1 = normalizeCoords(movingPiece.x+1, movingPiece.y);
-        const f2 = normalizeCoords(movingPiece.x+1, movingPiece.y+1);
-        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
-      } else if (dy === 1) { // down
-        if (!wrapVertical && movingPiece.y + 2 >= boardConfig.height) return false;
-        const d1 = normalizeCoords(movingPiece.x, movingPiece.y+2);
-        const d2 = normalizeCoords(movingPiece.x+1, movingPiece.y+2);
-        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
-        // Normalize freed cells too
-        const f1 = normalizeCoords(movingPiece.x, movingPiece.y);
-        const f2 = normalizeCoords(movingPiece.x+1, movingPiece.y);
-        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
-      } else if (dy === -1) { // up
-        if (!wrapVertical && movingPiece.y - 1 < 0) return false;
-        const d1 = normalizeCoords(movingPiece.x, movingPiece.y-1);
-        const d2 = normalizeCoords(movingPiece.x+1, movingPiece.y-1);
-        dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
-        // Normalize freed cells too
-        const f1 = normalizeCoords(movingPiece.x, movingPiece.y+1);
-        const f2 = normalizeCoords(movingPiece.x+1, movingPiece.y+1);
-        freed = [{x:f1.x, y:f1.y}, {x:f2.x, y:f2.y}];
-      }
+    if (movingPiece.isLarge) {
+      // Use helper function to calculate destination and freed cells
+      const result = calculateLargePieceDestination(movingPiece, dx, dy);
+      if (!result) return false;
+      
+      const { destCells: dest, freedCells: freed } = result;
 
-      // Both dest must be gaps, and the selected gap must be one of them
-      const destAreGaps = dest.every(d => {
+      // Check if destination is a large gap (swap case)
+      const destCell = grid[dest[0].y]?.[dest[0].x];
+      if (destCell?.isGap && destCell?.isLarge && selectedGap.isLarge) {
+        // Large piece swapping with large gap
+        const largeGap = pieceById.get(destCell.id);
+        
+        // Verify all 4 cells of destination belong to the same large gap
+        const allSameGap = dest.every(d => {
+          const cell = grid[d.y]?.[d.x];
+          return cell?.isGap && cell?.isLarge && cell.id === largeGap.id;
+        });
+        
+        if (allSameGap) {
+          // Swap positions
+          [movingPiece.x, movingPiece.y, largeGap.x, largeGap.y] =
+            [largeGap.x, largeGap.y, movingPiece.x, movingPiece.y];
+          
+          // Update grid: clear old positions and set new positions
+          // Clear old piece position
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const oldPiecePos = normalizeCoords(largeGap.x + dx, largeGap.y + dy);
+              grid[oldPiecePos.y][oldPiecePos.x] = null;
+            }
+          }
+          // Clear old gap position
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const oldGapPos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
+              grid[oldGapPos.y][oldGapPos.x] = null;
+            }
+          }
+          // Set new piece position
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const newPiecePos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
+              grid[newPiecePos.y][newPiecePos.x] = { isGap: false, isLarge: true, id: movingPiece.id, ox: dx, oy: dy };
+            }
+          }
+          // Set new gap position
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const newGapPos = normalizeCoords(largeGap.x + dx, largeGap.y + dy);
+              grid[newGapPos.y][newGapPos.x] = { isGap: true, isLarge: true, id: largeGap.id, ox: dx, oy: dy };
+            }
+          }
+          
+          if (!skipRender) renderAll();
+          if (gameMode === 'challenge' && !isShuffling) {
+            challengeMoveCount++;
+            updateMoveCount();
+            if (checkWinCondition()) {
+              handleWin();
+            }
+          }
+          return true;
+        }
+      }
+      // Large PIECE moving into 2 small gaps (not large gap movement)
+      // Both dest must be small gaps, and the selected gap must be one of them
+      const destAreSmallGaps = dest.every(d => {
         const cell = grid[d.y]?.[d.x];
-        return cell?.type === 'gap';
+        return cell?.isGap && !cell?.isLarge;
       });
+      
+      // For small gaps moving into large piece: check if selected gap is one of the destination cells
+      // For large gaps: this is handled by the swap case above, so we skip this section
+      if (selectedGap.isLarge) {
+        // Large gap cannot move into large piece via this path (handled by swap above)
+        return false;
+      }
+      
       const selectedIsDest = dest.some(d => d.x === selectedGap.x && d.y === selectedGap.y);
-      if (!(destAreGaps && selectedIsDest)) return false;
+      if (!(destAreSmallGaps && selectedIsDest)) return false;
 
       // Find which gaps are at destination cells
       const gapPieces = cachedGapPieces || pieces.filter(p => p.isGap);
@@ -1245,6 +1921,7 @@
           const gap = gapAt(d);
           if (!gap) return false;
           const target = freed.find(f => f.y === d.y);
+          if (!target) return false;
           map.push({ gap, target });
         }
       } else {
@@ -1253,6 +1930,7 @@
           const gap = gapAt(d);
           if (!gap) return false;
           const target = freed.find(f => f.x === d.x);
+          if (!target) return false;
           map.push({ gap, target });
         }
       }
@@ -1283,7 +1961,8 @@
         for (let dx = 0; dx < 2; dx++) {
           const newCellPos = normalizeCoords(movingPiece.x + dx, movingPiece.y + dy);
           grid[newCellPos.y][newCellPos.x] = {
-            type: 'big',
+            isGap: false,
+            isLarge: true,
             id: movingPiece.id,
             ox: dx,
             oy: dy
@@ -1292,7 +1971,7 @@
       }
       // Update gap positions in grid (gaps are already at correct wrapped positions)
       for (const {gap} of map) {
-        grid[gap.y][gap.x] = { type: 'gap', id: gap.id };
+        grid[gap.y][gap.x] = { isGap: true, isLarge: false, id: gap.id };
       }
       
       if (!skipRender) renderAll();
@@ -1315,10 +1994,18 @@
     for (const gap of gapPieces) {
       for (const dir of ['up','down','left','right']) {
         let fromX = gap.x, fromY = gap.y;
-        if (dir === 'up') fromY = gap.y + 1;
-        if (dir === 'down') fromY = gap.y - 1;
-        if (dir === 'left') fromX = gap.x + 1;
-        if (dir === 'right') fromX = gap.x - 1;
+        // For large gaps, look beyond the 2x2 extent (same as in tryMove)
+        if (gap.isLarge) {
+          if (dir === 'up') fromY = gap.y + 2;
+          if (dir === 'down') fromY = gap.y - 1;
+          if (dir === 'left') fromX = gap.x + 2;
+          if (dir === 'right') fromX = gap.x - 1;
+        } else {
+          if (dir === 'up') fromY = gap.y + 1;
+          if (dir === 'down') fromY = gap.y - 1;
+          if (dir === 'left') fromX = gap.x + 1;
+          if (dir === 'right') fromX = gap.x - 1;
+        }
         
         // Check bounds before wrapping (skip if no wrapping and out of bounds)
         if (!wrapHorizontal && (fromX < 0 || fromX >= boardConfig.width)) continue;
@@ -1332,50 +2019,89 @@
         const occ = grid[fromY][fromX];
         if (!occ) continue;
         
-        // Check if it's a gap swap
-        const isGapSwap = (occ.type === 'gap');
+        // Check if it's a gap swap (small or large)
+        const isGapSwap = occ.isGap;
         
-        if (occ.type === 'small') {
+        if (!occ.isLarge && !occ.isGap) {
           moves.push({ gap, dir, isBig: false, isGapSwap: false });
-        } else if (occ.type === 'big') {
+        } else if (occ.isLarge && !occ.isGap) {
           const piece = pieceById.get(occ.id);
           let dx = 0, dy = 0;
           if (dir === 'up') dy = -1;
           if (dir === 'down') dy = 1;
           if (dir === 'left') dx = -1;
           if (dir === 'right') dx = 1;
-          let dest = [];
-          if (dx === 1) {
-            if (!wrapHorizontal && piece.x + 2 >= boardConfig.width) continue;
-            const d1 = normalizeCoords(piece.x+2, piece.y);
-            const d2 = normalizeCoords(piece.x+2, piece.y+1);
-            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
-          } else if (dx === -1) {
-            if (!wrapHorizontal && piece.x - 1 < 0) continue;
-            const d1 = normalizeCoords(piece.x-1, piece.y);
-            const d2 = normalizeCoords(piece.x-1, piece.y+1);
-            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
-          } else if (dy === 1) {
-            if (!wrapVertical && piece.y + 2 >= boardConfig.height) continue;
-            const d1 = normalizeCoords(piece.x, piece.y+2);
-            const d2 = normalizeCoords(piece.x+1, piece.y+2);
-            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
-          } else if (dy === -1) {
-            if (!wrapVertical && piece.y - 1 < 0) continue;
-            const d1 = normalizeCoords(piece.x, piece.y-1);
-            const d2 = normalizeCoords(piece.x+1, piece.y-1);
-            dest = [{x:d1.x, y:d1.y}, {x:d2.x, y:d2.y}];
+          
+          // Use helper function to calculate destination cells
+          const result = calculateLargePieceDestination(piece, dx, dy);
+          if (!result) continue;
+          
+          const { destCells: dest } = result;
+          
+          // Check if destination is a large gap (for swap)
+          if (gap.isLarge) {
+            const destCell = grid[dest[0].y]?.[dest[0].x];
+            if (destCell?.isGap && destCell?.isLarge) {
+              const largeGap = pieceById.get(destCell.id);
+              const allSameGap = dest.every(d => {
+                const cell = grid[d.y]?.[d.x];
+                return cell?.isGap && cell?.isLarge && cell.id === largeGap.id;
+              });
+              if (allSameGap) {
+                moves.push({ gap, dir, isBig: true, isGapSwap: false });
+                continue;
+              }
+            }
           }
-          const destAreGaps = dest.every(d => {
+          
+          // Check if destination is small gaps
+          const destAreSmallGaps = dest.every(d => {
             const cell = grid[d.y]?.[d.x];
-            return cell?.type === 'gap';
+            return cell?.isGap && !cell?.isLarge;
           });
           const selectedIsDest = dest.some(d => d.x === gap.x && d.y === gap.y);
-          if (destAreGaps && selectedIsDest) {
+          if (destAreSmallGaps && selectedIsDest) {
             moves.push({ gap, dir, isBig: true, isGapSwap: false });
           }
         } else if (isGapSwap) {
-          moves.push({ gap, dir, isBig: false, isGapSwap: true });
+          // Gap swap: only allow if both gaps are the same size
+          const otherGap = pieceById.get(occ.id);
+          if (gap.isLarge === otherGap.isLarge) {
+            moves.push({ gap, dir, isBig: false, isGapSwap: true });
+          }
+        } else if (gap.isLarge && !occ.isLarge) {
+          // Large gap moving into 2 aligned small pieces/gaps
+          let dx = 0, dy = 0;
+          if (dir === 'up') dy = -1;
+          if (dir === 'down') dy = 1;
+          if (dir === 'left') dx = -1;
+          if (dir === 'right') dx = 1;
+          
+          // Calculate the two destination cells
+          let destCells = [];
+          if (dx !== 0) {
+            // Moving horizontally: need 2 cells vertically aligned
+            const cell1 = normalizeCoords(fromX, fromY);
+            const cell2 = normalizeCoords(fromX, fromY + 1);
+            destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+          } else if (dy !== 0) {
+            // Moving vertically: need 2 cells horizontally aligned
+            const cell1 = normalizeCoords(fromX, fromY);
+            const cell2 = normalizeCoords(fromX + 1, fromY);
+            destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+          }
+          
+          // Verify both cells are small pieces or small gaps
+          if (destCells.length === 2) {
+            const dest1Cell = grid[destCells[0].y]?.[destCells[0].x];
+            const dest2Cell = grid[destCells[1].y]?.[destCells[1].x];
+            
+            if (dest1Cell && dest2Cell &&
+                !dest1Cell.isLarge &&
+                !dest2Cell.isLarge) {
+              moves.push({ gap, dir, isBig: false, isGapSwap: false });
+            }
+          }
         }
       }
     }
@@ -1498,7 +2224,7 @@
   function calculateShuffleScore() {
     let totalDistance = 0;
     
-    const bigPieces = pieces.filter(p => p.type === 'big');
+    const bigPieces = pieces.filter(p => p.isLarge && !p.isGap);
     for (const piece of bigPieces) {
       let dx = Math.abs(piece.x - piece.homeX);
       let dy = Math.abs(piece.y - piece.homeY);
@@ -1730,8 +2456,8 @@
    * @returns {Array} Array of {x, y} cell coordinates
    */
   function getCellsForTile(tile, clickedCell, gridX, gridY) {
-    if (clickedCell.type === 'big') {
-      // For big pieces, normalize all 4 cell coordinates
+    if (clickedCell.isLarge) {
+      // For big pieces/gaps, normalize all 4 cell coordinates
       const c1 = normalizeCoords(tile.x, tile.y);
       const c2 = normalizeCoords(tile.x + 1, tile.y);
       const c3 = normalizeCoords(tile.x, tile.y + 1);
@@ -1757,44 +2483,68 @@
     const result = [];
     
     for (const gap of gapPieces) {
+      // For large gaps, get all 4 cells
+      let gapCells;
+      if (gap.isLarge) {
+        const c1 = normalizeCoords(gap.x, gap.y);
+        const c2 = normalizeCoords(gap.x + 1, gap.y);
+        const c3 = normalizeCoords(gap.x, gap.y + 1);
+        const c4 = normalizeCoords(gap.x + 1, gap.y + 1);
+        gapCells = [
+          {x: c1.x, y: c1.y},
+          {x: c2.x, y: c2.y},
+          {x: c3.x, y: c3.y},
+          {x: c4.x, y: c4.y}
+        ];
+      } else {
+        gapCells = [{x: gap.x, y: gap.y}];
+      }
+      
       for (const cell of cells) {
-        const dx = gap.x - cell.x;
-        const dy = gap.y - cell.y;
+        let found = false;
         
-        // Check direct adjacency
-        if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-          result.push({ gap, dx, dy });
-          break; // Only add each gap once
+        for (const gapCell of gapCells) {
+          const dx = gapCell.x - cell.x;
+          const dy = gapCell.y - cell.y;
+          
+          // Check direct adjacency
+          if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
+            result.push({ gap, dx, dy });
+            found = true;
+            break;
+          }
+          
+          // Check wrapped adjacency if wrapping is enabled
+          if (wrapHorizontal) {
+            // Check if gap wraps around horizontally
+            if (cell.x === boardConfig.width - 1 && gapCell.x === 0 && dy === 0) {
+              result.push({ gap, dx: 1, dy: 0 });
+              found = true;
+              break;
+            }
+            if (cell.x === 0 && gapCell.x === boardConfig.width - 1 && dy === 0) {
+              result.push({ gap, dx: -1, dy: 0 });
+              found = true;
+              break;
+            }
+          }
+          
+          if (wrapVertical) {
+            // Check if gap wraps around vertically
+            if (cell.y === boardConfig.height - 1 && gapCell.y === 0 && dx === 0) {
+              result.push({ gap, dx: 0, dy: 1 });
+              found = true;
+              break;
+            }
+            if (cell.y === 0 && gapCell.y === boardConfig.height - 1 && dx === 0) {
+              result.push({ gap, dx: 0, dy: -1 });
+              found = true;
+              break;
+            }
+          }
         }
         
-        // Check wrapped adjacency if wrapping is enabled
-        if (wrapHorizontal) {
-          // Check if gap wraps around horizontally
-          if (cell.x === boardConfig.width - 1 && gap.x === 0 && dy === 0) {
-            // Gap is at left edge, cell is at right edge (gap is "to the right" via wrapping)
-            result.push({ gap, dx: 1, dy: 0 });
-            break;
-          }
-          if (cell.x === 0 && gap.x === boardConfig.width - 1 && dy === 0) {
-            // Gap is at right edge, cell is at left edge (gap is "to the left" via wrapping)
-            result.push({ gap, dx: -1, dy: 0 });
-            break;
-          }
-        }
-        
-        if (wrapVertical) {
-          // Check if gap wraps around vertically
-          if (cell.y === boardConfig.height - 1 && gap.y === 0 && dx === 0) {
-            // Gap is at top edge, cell is at bottom edge (gap is "below" via wrapping)
-            result.push({ gap, dx: 0, dy: 1 });
-            break;
-          }
-          if (cell.y === 0 && gap.y === boardConfig.height - 1 && dx === 0) {
-            // Gap is at bottom edge, cell is at top edge (gap is "above" via wrapping)
-            result.push({ gap, dx: 0, dy: -1 });
-            break;
-          }
-        }
+        if (found) break; // Only add each gap once
       }
     }
     
@@ -1877,27 +2627,46 @@
    * @returns {boolean} True if gap is in swipe direction
    */
   function isGapInSwipeDirection(cells, gap, swipeDir) {
+    // For large gaps, we need to check all 4 cells of the gap
+    let gapCells;
+    if (gap.isLarge) {
+      const c1 = normalizeCoords(gap.x, gap.y);
+      const c2 = normalizeCoords(gap.x + 1, gap.y);
+      const c3 = normalizeCoords(gap.x, gap.y + 1);
+      const c4 = normalizeCoords(gap.x + 1, gap.y + 1);
+      gapCells = [
+        {x: c1.x, y: c1.y},
+        {x: c2.x, y: c2.y},
+        {x: c3.x, y: c3.y},
+        {x: c4.x, y: c4.y}
+      ];
+    } else {
+      gapCells = [{x: gap.x, y: gap.y}];
+    }
+    
     for (const cell of cells) {
-      let dx = gap.x - cell.x;
-      let dy = gap.y - cell.y;
-      
-      // Check direct adjacency first
-      if (swipeDir === 'right' && dx === 1 && dy === 0) return true;
-      if (swipeDir === 'left' && dx === -1 && dy === 0) return true;
-      if (swipeDir === 'down' && dx === 0 && dy === 1) return true;
-      if (swipeDir === 'up' && dx === 0 && dy === -1) return true;
-      
-      // Check wrapped adjacency if wrapping is enabled
-      if (wrapHorizontal) {
-        // Check if gap wraps around horizontally
-        if (swipeDir === 'right' && cell.x === boardConfig.width - 1 && gap.x === 0 && dy === 0) return true;
-        if (swipeDir === 'left' && cell.x === 0 && gap.x === boardConfig.width - 1 && dy === 0) return true;
-      }
-      
-      if (wrapVertical) {
-        // Check if gap wraps around vertically
-        if (swipeDir === 'down' && cell.y === boardConfig.height - 1 && gap.y === 0 && dx === 0) return true;
-        if (swipeDir === 'up' && cell.y === 0 && gap.y === boardConfig.height - 1 && dx === 0) return true;
+      for (const gapCell of gapCells) {
+        let dx = gapCell.x - cell.x;
+        let dy = gapCell.y - cell.y;
+        
+        // Check direct adjacency first
+        if (swipeDir === 'right' && dx === 1 && dy === 0) return true;
+        if (swipeDir === 'left' && dx === -1 && dy === 0) return true;
+        if (swipeDir === 'down' && dx === 0 && dy === 1) return true;
+        if (swipeDir === 'up' && dx === 0 && dy === -1) return true;
+        
+        // Check wrapped adjacency if wrapping is enabled
+        if (wrapHorizontal) {
+          // Check if gap wraps around horizontally
+          if (swipeDir === 'right' && cell.x === boardConfig.width - 1 && gapCell.x === 0 && dy === 0) return true;
+          if (swipeDir === 'left' && cell.x === 0 && gapCell.x === boardConfig.width - 1 && dy === 0) return true;
+        }
+        
+        if (wrapVertical) {
+          // Check if gap wraps around vertically
+          if (swipeDir === 'down' && cell.y === boardConfig.height - 1 && gapCell.y === 0 && dx === 0) return true;
+          if (swipeDir === 'up' && cell.y === 0 && gapCell.y === boardConfig.height - 1 && dx === 0) return true;
+        }
       }
     }
     return false;
@@ -1963,8 +2732,17 @@
     lastDragGapPos = null; // Reset drag tracking for new drag session
     dragControlUsed = false; // Reset drag control flag for new drag session
     
-    // Check if we clicked on a gap and select it
-    const clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+    // Check if we clicked on a gap and select it (handles both small and large gaps)
+    let clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+    
+    // If not found at exact position, check if we clicked on any cell of a large gap
+    if (!clickedGap) {
+      const cell = grid[gridY]?.[gridX];
+      if (cell?.isGap && cell?.isLarge) {
+        clickedGap = pieceById.get(cell.id);
+      }
+    }
+    
     if (clickedGap) {
       pieces.forEach(p => p.selected = false);
       clickedGap.selected = true;
@@ -2008,7 +2786,7 @@
     
     // Check if we started on a gap
     const startCell = grid[mouseDownGridPos.y][mouseDownGridPos.x];
-    const startedOnGap = startCell?.type === 'gap';
+    const startedOnGap = startCell?.isGap;
     
     if (startedOnGap) {
       // GAP DRAG CONTROL: Started on a gap, check if we're over a piece or the other gap
@@ -2016,13 +2794,29 @@
         const currentCell = grid[currentGridY][currentGridX];
         
         // Check if we're over the other gap
-        const startGap = pieces.find(p => p.isGap && p.x === mouseDownGridPos.x && p.y === mouseDownGridPos.y);
+        let startGap = pieces.find(p => p.isGap && p.x === mouseDownGridPos.x && p.y === mouseDownGridPos.y);
+        
+        // If not found at exact position, check if we started on any cell of a large gap
+        if (!startGap) {
+          const startCell = grid[mouseDownGridPos.y]?.[mouseDownGridPos.x];
+          if (startCell?.isGap && startCell?.isLarge) {
+            startGap = pieceById.get(startCell.id);
+          }
+        }
+        
         if (!startGap) return; // Safety check
         
         const gapPieces = pieces.filter(p => p.isGap);
         const otherGap = gapPieces.find(g => g !== startGap);
         
-        if (currentCell?.type === 'gap' && otherGap && otherGap.x === currentGridX && otherGap.y === currentGridY) {
+        // Check if current cell is a gap (small or large)
+        const isCurrentCellGap = currentCell?.isGap;
+        let currentGap = null;
+        if (isCurrentCellGap) {
+          currentGap = pieceById.get(currentCell.id);
+        }
+        
+        if (isCurrentCellGap && otherGap && currentGap === otherGap) {
           // We're over the other gap - check if it's adjacent
           const dx = currentGridX - mouseDownGridPos.x;
           const dy = currentGridY - mouseDownGridPos.y;
@@ -2056,7 +2850,7 @@
               }
             }
           }
-        } else if (currentCell !== null) {
+        } else if (currentCell !== null && !currentCell.isGap) {
           // We're over a piece - check if it's in the valid drag region
           const cellX = currentX - (currentGridX * tilePx);
           const cellY = currentY - (currentGridY * tilePx);
@@ -2066,22 +2860,42 @@
             // Get cells to check for adjacency
             const cellsToCheck = getCellsForTile(piece, currentCell, currentGridX, currentGridY);
             
-            // Find if piece is adjacent to gap and check valid drag region
+            // Get all cells of the gap (1 for small, 4 for large)
+            let gapCells;
+            if (startGap.isLarge) {
+              const c1 = normalizeCoords(startGap.x, startGap.y);
+              const c2 = normalizeCoords(startGap.x + 1, startGap.y);
+              const c3 = normalizeCoords(startGap.x, startGap.y + 1);
+              const c4 = normalizeCoords(startGap.x + 1, startGap.y + 1);
+              gapCells = [
+                {x: c1.x, y: c1.y},
+                {x: c2.x, y: c2.y},
+                {x: c3.x, y: c3.y},
+                {x: c4.x, y: c4.y}
+              ];
+            } else {
+              gapCells = [{x: mouseDownGridPos.x, y: mouseDownGridPos.y}];
+            }
+            
+            // Find if piece is adjacent to ANY cell of the gap and check valid drag region
             let isAdjacent = false;
             let adjacentDir = null;
             
             for (const cell of cellsToCheck) {
-              const dx = cell.x - mouseDownGridPos.x;
-              const dy = cell.y - mouseDownGridPos.y;
-              
-              if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-                isAdjacent = true;
-                // Check if mouse is in valid drag region
-                if (isInValidDragRegion(cellX, cellY, dx, dy)) {
-                  adjacentDir = vectorToDirection(dx, dy, true); // Invert for gap drag
+              for (const gapCell of gapCells) {
+                const dx = cell.x - gapCell.x;
+                const dy = cell.y - gapCell.y;
+                
+                if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
+                  isAdjacent = true;
+                  // Check if mouse is in valid drag region
+                  if (isInValidDragRegion(cellX, cellY, dx, dy)) {
+                    adjacentDir = vectorToDirection(dx, dy, true); // Invert for gap drag
+                  }
+                  break;
                 }
-                break;
               }
+              if (isAdjacent && adjacentDir) break;
             }
             
             if (isAdjacent && adjacentDir) {
@@ -2117,7 +2931,7 @@
       if (currentGridX >= 0 && currentGridX < boardConfig.width && currentGridY >= 0 && currentGridY < boardConfig.height) {
         const currentCell = grid[currentGridY][currentGridX];
         
-        if (currentCell?.type === 'gap') {
+        if (currentCell?.isGap) {
           // We're over a gap - check if it's in the valid drag region
           const cellX = currentX - (currentGridX * tilePx);
           const cellY = currentY - (currentGridY * tilePx);
@@ -2152,7 +2966,8 @@
                
                // Only trigger move if this is a different gap than the last one we dragged over
                if (lastDragGapPos !== gapPosKey) {
-                 const gap = pieces.find(p => p.isGap && p.x === currentGridX && p.y === currentGridY);
+                 // Get the gap at current position (handles both small and large gaps)
+                 const gap = pieceById.get(currentCell.id);
                  if (gap) {
                    pieces.forEach(p => p.selected = false);
                    gap.selected = true;
@@ -2167,7 +2982,8 @@
                         swipePreviewTile = null;
                         swipePreviewOffset = { x: 0, y: 0 };
                       }
-                      mouseDownGridPos = { x: currentGridX, y: currentGridY };
+                      // Update mouseDownGridPos to the piece's new position after the move
+                      mouseDownGridPos = { x: piece.x, y: piece.y };
                     }
                   }
                 }
@@ -2188,22 +3004,67 @@
         const gridY = mouseDownGridPos.y;
         const clickedCell = grid[gridY][gridX];
 
-        if (!clickedCell || clickedCell.type === 'gap') {
+        if (!clickedCell || clickedCell.isGap) {
           // Swiping on a gap - check for adjacent piece or other gap
-          let targetX = gridX, targetY = gridY;
-          if (swipeDir === 'right') targetX++;
-          else if (swipeDir === 'left') targetX--;
-          else if (swipeDir === 'down') targetY++;
-          else if (swipeDir === 'up') targetY--;
           
-          if (targetX >= 0 && targetX < boardConfig.width && targetY >= 0 && targetY < boardConfig.height) {
-            const targetCell = grid[targetY][targetX];
+          // Get the gap piece (handles both small and large gaps)
+          let clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+          if (!clickedGap && clickedCell?.isGap && clickedCell?.isLarge) {
+            clickedGap = pieceById.get(clickedCell.id);
+          }
+          
+          if (!clickedGap) return;
+          
+          // Get all cells of the gap (1 for small, 4 for large)
+          let gapCells;
+          if (clickedGap.isLarge) {
+            // For large gaps, get all 4 cells directly
+            const c1 = normalizeCoords(clickedGap.x, clickedGap.y);
+            const c2 = normalizeCoords(clickedGap.x + 1, clickedGap.y);
+            const c3 = normalizeCoords(clickedGap.x, clickedGap.y + 1);
+            const c4 = normalizeCoords(clickedGap.x + 1, clickedGap.y + 1);
+            gapCells = [
+              {x: c1.x, y: c1.y},
+              {x: c2.x, y: c2.y},
+              {x: c3.x, y: c3.y},
+              {x: c4.x, y: c4.y}
+            ];
+          } else {
+            // For small gaps, just use the clicked cell
+            gapCells = [{x: gridX, y: gridY}];
+          }
+          
+          // For each gap cell, check the adjacent cell in swipe direction
+          let targetCell = null;
+          let targetX = -1, targetY = -1;
+          
+          for (const gapCell of gapCells) {
+            let checkX = gapCell.x, checkY = gapCell.y;
+            if (swipeDir === 'right') checkX++;
+            else if (swipeDir === 'left') checkX--;
+            else if (swipeDir === 'down') checkY++;
+            else if (swipeDir === 'up') checkY--;
             
+            // Apply wrapping to check coordinates
+            const wrappedCheck = normalizeCoords(checkX, checkY);
+            checkX = wrappedCheck.x;
+            checkY = wrappedCheck.y;
+            
+            const cell = grid[checkY][checkX];
+            if (cell && !cell.isGap) {
+              // Found a non-gap piece adjacent to this gap cell
+              targetCell = cell;
+              targetX = checkX;
+              targetY = checkY;
+              break;
+            }
+          }
+          
+          if (targetX >= 0 && targetY >= 0) {
             // Check if target is the other gap
-            const clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
             const gapPieces = pieces.filter(p => p.isGap);
             const otherGap = gapPieces.find(g => g !== clickedGap);
-            const isOtherGap = (targetCell?.type === 'gap' && otherGap && otherGap.x === targetX && otherGap.y === targetY);
+            const isOtherGap = (targetCell?.isGap && otherGap && otherGap.x === targetX && otherGap.y === targetY);
             
             if (isOtherGap) {
               // No preview for gap swaps
@@ -2213,7 +3074,7 @@
                 swipePreviewTile = null;
                 swipePreviewOffset = { x: 0, y: 0 };
               }
-            } else if (targetCell && targetCell.type !== 'gap') {
+            } else if (targetCell && !targetCell.isGap) {
               // Show preview for piece moving into gap
               const piece = pieceById.get(targetCell.id);
               if (piece) {
@@ -2257,12 +3118,12 @@
         // Check if move would be valid
         let validSwipe = false;
         
-        if (piece.type === 'small') {
+        if (!piece.isLarge) {
           // For small pieces, just check if any gap is in swipe direction
           const gapPieces = pieces.filter(p => p.isGap);
           validSwipe = gapPieces.some(gap => isGapInSwipeDirection(cellsToCheck, gap, swipeDir));
-        } else if (piece.type === 'big') {
-          // For big pieces, need to verify BOTH destination cells are gaps
+        } else {
+          // For big pieces, need to verify destination is valid (2 small gaps or 1 large gap)
           // Calculate destination cells based on swipe direction
           let dx = 0, dy = 0;
           if (swipeDir === 'right') dx = 1;
@@ -2270,50 +3131,29 @@
           else if (swipeDir === 'down') dy = 1;
           else if (swipeDir === 'up') dy = -1;
           
-          // Calculate destination face cells with wrapping support
-          let destCells = [];
-          if (dx === 1) { // right
-            if (!wrapHorizontal && piece.x + 2 >= boardConfig.width) {
-              // No wrapping and out of bounds
-              destCells = [];
-            } else {
-              const d1 = normalizeCoords(piece.x + 2, piece.y);
-              const d2 = normalizeCoords(piece.x + 2, piece.y + 1);
-              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
-            }
-          } else if (dx === -1) { // left
-            if (!wrapHorizontal && piece.x - 1 < 0) {
-              // No wrapping and out of bounds
-              destCells = [];
-            } else {
-              const d1 = normalizeCoords(piece.x - 1, piece.y);
-              const d2 = normalizeCoords(piece.x - 1, piece.y + 1);
-              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
-            }
-          } else if (dy === 1) { // down
-            if (!wrapVertical && piece.y + 2 >= boardConfig.height) {
-              // No wrapping and out of bounds
-              destCells = [];
-            } else {
-              const d1 = normalizeCoords(piece.x, piece.y + 2);
-              const d2 = normalizeCoords(piece.x + 1, piece.y + 2);
-              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
-            }
-          } else if (dy === -1) { // up
-            if (!wrapVertical && piece.y - 1 < 0) {
-              // No wrapping and out of bounds
-              destCells = [];
-            } else {
-              const d1 = normalizeCoords(piece.x, piece.y - 1);
-              const d2 = normalizeCoords(piece.x + 1, piece.y - 1);
-              destCells = [{x: d1.x, y: d1.y}, {x: d2.x, y: d2.y}];
-            }
-          }
+          // Use helper function to calculate destination cells
+          const result = calculateLargePieceDestination(piece, dx, dy);
+          const destCells = result ? result.destCells : [];
           
-          // Check if both destination cells are gaps
+          // Check if destination is valid (2 small gaps OR 1 large gap)
           if (destCells.length === 2) {
-            const destAreGaps = destCells.every(d => grid[d.y][d.x]?.type === 'gap');
-            validSwipe = destAreGaps;
+            // Check for large gap
+            const destCell = grid[destCells[0].y]?.[destCells[0].x];
+            if (destCell?.isGap && destCell?.isLarge) {
+              const largeGap = pieceById.get(destCell.id);
+              const allSameGap = destCells.every(d => {
+                const cell = grid[d.y]?.[d.x];
+                return cell?.isGap && cell?.isLarge && cell.id === largeGap.id;
+              });
+              validSwipe = allSameGap;
+            } else {
+              // Check for 2 small gaps
+              const destAreSmallGaps = destCells.every(d => {
+                const cell = grid[d.y]?.[d.x];
+                return cell?.isGap && !cell?.isLarge;
+              });
+              validSwipe = destAreSmallGaps;
+            }
           }
         }
 
@@ -2420,8 +3260,17 @@
     const gridX = mouseDownGridPos.x;
     const gridY = mouseDownGridPos.y;
 
-    // Check if clicked on a gap
-    const clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+    // Check if clicked on a gap (handles both small and large gaps)
+    let clickedGap = pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
+    
+    // If not found at exact position, check if we clicked on any cell of a large gap
+    if (!clickedGap) {
+      const cell = grid[gridY]?.[gridX];
+      if (cell?.isGap && cell?.isLarge) {
+        clickedGap = pieceById.get(cell.id);
+      }
+    }
+    
     const gapPieces = pieces.filter(p => p.isGap);
     const clickedGapIdx = clickedGap ? gapPieces.indexOf(clickedGap) : -1;
     
@@ -2757,7 +3606,7 @@
    * @returns {boolean} True if any large piece is wrapped in the specified direction
    */
   function hasWrappedLargePieces(checkHorizontal, checkVertical) {
-    const bigPieces = pieces.filter(p => p.type === 'big');
+    const bigPieces = pieces.filter(p => p.isLarge && !p.isGap);
     
     for (const piece of bigPieces) {
       // Calculate all 4 cell positions with normalization

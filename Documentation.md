@@ -1,7 +1,7 @@
 # Slide Puzzle Game - AI Instructions
 
 ## Project Overview
-This is a browser-based slide puzzle game with a unique 8×8 grid with mixed-size pieces and dual-gap mechanics. The project is split into three files: HTML for structure, CSS for styling, and JavaScript for game logic.
+This is a browser-based slide puzzle game with a unique 8×8 grid with mixed-size pieces and multi-gap mechanics. The game supports both small (1×1) and large (2×2) pieces, as well as small (1×1) and large (2×2) gaps. The project is split into three files: HTML for structure, CSS for styling, and JavaScript for game logic.
 
 ## Game Mechanics
 
@@ -23,7 +23,8 @@ The game supports multiple board configurations with different layouts and backg
    - **Image Mode**: `'single'` - One image for entire board
    - **Background Image**: `lightworld.png`
    - **Pieces**: 30 small (1×1) + 8 large (2×2)
-   - **Gaps**: 2 gaps at positions (7,6) and (7,7)
+   - **Gaps**: 2 small gaps at positions (7,6) and (7,7)
+   - **Large Gaps**: None (empty array)
    - **Large Pieces**: Top-left corners at (0,0), (3,0), (5,0), (0,3), (3,3), (6,3), (0,6), (5,6)
 
 2. **Horizontal Board** (`horizontalBoard`) - Slug: `'horizontal'`
@@ -33,7 +34,8 @@ The game supports multiple board configurations with different layouts and backg
      - Left half (x: 0-7): `lightworld.png`
      - Right half (x: 8-15): `darkworld.png`
    - **Pieces**: 60 small (1×1) + 16 large (2×2)
-   - **Gaps**: 2 gaps at positions (15,6) and (15,7) - bottom right of right half
+   - **Gaps**: 2 small gaps at positions (15,6) and (15,7) - bottom right of right half
+   - **Large Gaps**: None (empty array)
    - **Large Pieces**: Left half mirrors default layout, right half duplicates it shifted 8 tiles right
 
 3. **Vertical Board** (`verticalBoard`) - Slug: `'vertical'`
@@ -43,8 +45,19 @@ The game supports multiple board configurations with different layouts and backg
      - Top half (y: 0-7): `lightworld.png`
      - Bottom half (y: 8-15): `darkworld.png`
    - **Pieces**: 60 small (1×1) + 16 large (2×2)
-   - **Gaps**: 2 gaps at positions (7,14) and (7,15) - bottom right of bottom half
+   - **Gaps**: 2 small gaps at positions (7,14) and (7,15) - bottom right of bottom half
+   - **Large Gaps**: None (empty array)
    - **Large Pieces**: Top half mirrors default layout, bottom half duplicates it shifted 8 tiles down
+
+4. **Large Gap Board** (`largeGapBoard`) - Slug: `'largegap'`
+   - **Grid Size**: 8×8 (64 cells total)
+   - **Image Mode**: `'single'` - One image for entire board
+   - **Background Image**: `lightworld.png`
+   - **Pieces**: 32 small (1×1) + 7 large (2×2)
+   - **Gaps**: None (empty array)
+   - **Large Gaps**: 1 large gap at position (0,6) - bottom left corner
+   - **Large Pieces**: Top-left corners at (0,0), (3,0), (5,0), (0,3), (3,3), (6,3), (5,6)
+   - **Note**: Experimental board type demonstrating large gap mechanics
 
 #### Board Configuration Structure
 ```javascript
@@ -56,7 +69,8 @@ const boardConfig = {
     primary: 'lightworld.png',    // Primary image (or only image for single mode)
     secondary: 'darkworld.png'    // Secondary image (for horizontal/vertical modes)
   },
-  gapIdentities: [{x: 7, y: 6}, {x: 7, y: 7}],  // Gap identity positions
+  gapIdentities: [{x: 7, y: 6}, {x: 7, y: 7}],  // Small gap identity positions
+  largeGapIdentities: [],  // Large gap identity positions (top-left corners)
   largePieces: [         // Large piece top-left corners
     {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
@@ -96,6 +110,104 @@ Gaps are not just empty spaces—they are entities with persistent identity that
 - Pieces toggle between acting as gaps or tiles (via `isGap` flag)
 - All pieces keep their original identities (homeX, homeY unchanged)
 - Only the behavior changes, not the visual identity
+- **Small and large gaps are randomized separately**: The number of small gaps and large gaps stays the same, but which pieces act as gaps is randomized within each size category
+
+### Large Gap System
+
+Large gaps are 2×2 gaps that function similarly to large pieces but act as empty spaces. They introduce new movement possibilities and strategic depth to the puzzle.
+
+#### Configuration
+- **Board Configuration**: `largeGapIdentities` array defines large gap positions
+- **Format**: Array of `{x, y}` coordinates representing top-left corners of 2×2 gaps
+- **Example**: `largeGapIdentities: [{x: 2, y: 2}, {x: 6, y: 4}]`
+- **Current Status**: All boards have empty arrays, ready for future use
+
+#### Type System
+- **Flags**:
+  - `isGap: true` - Identifies as a gap
+  - `isLarge: true` - Identifies as a 2×2 entity
+- **Grid Representation**: Occupies 4 cells with `{type:'biggap', id, ox, oy}`
+- **Note**: Pieces no longer store a `type` property; grid cell type strings are derived from `isGap` and `isLarge` flags using `getGridCellType()`
+
+#### DOM Structure
+Large gaps use a nested structure for proper styling and selection:
+- **Wrapper**: `.gap-wrapper.big` (2×2 container)
+- **Inner Element**: `.gap.big` (visual gap with background)
+- **Selection**: `.selected` class on wrapper for blue outline
+
+#### Movement Behavior
+
+**Small Piece Movement**:
+- Small pieces can move into small gaps (1×1)
+- Small pieces cannot move into large gaps (2×2) because large gaps must remain connected as 2×2 blocks
+
+**Large Piece Movement**:
+- Large pieces can move into 2 aligned small gaps
+- Large pieces can swap positions with large gaps
+- Both entities exchange positions completely when swapping
+- Grid updates: Clear 8 cells (both old positions), set 8 cells (both new positions)
+- Requires all 4 destination cells to belong to the same large gap when swapping
+
+**Large Gap Movement**:
+- Large gaps can move into 2 aligned small pieces or small gaps (or a combination)
+- Works similarly to large piece movement but in reverse
+- The 2 destination cells must be properly aligned (both in same row or same column)
+- The moved pieces/gaps are repositioned to the cells freed by the large gap
+- Example: Large gap at (2,2)-(3,3) can move right if cells (4,2) and (4,3) contain small pieces/gaps
+
+**Gap Swapping**:
+- Small gaps can swap with other small gaps
+- Large gaps can swap with other large gaps
+- **Size Matching Required**: Small gaps cannot swap with large gaps
+- Enforced to maintain puzzle solvability and prevent invalid states
+
+#### Rendering with Wrapping
+
+When wrapping is enabled, large gaps that span board edges are rendered intelligently:
+
+**Rendering Strategies**:
+1. **Normal 2×2** (no edge spanning):
+   - Single `.gap-wrapper.big` element
+   - Standard positioning and sizing
+
+2. **2 Vertical Strips** (spans horizontal edge):
+   - Two `.gap-wrapper.big` elements (1×2 each)
+   - Left strip and right strip positioned separately
+   - Each shows correct portion of background
+
+3. **2 Horizontal Strips** (spans vertical edge):
+   - Two `.gap-wrapper.big` elements (2×1 each)
+   - Top strip and bottom strip positioned separately
+   - Each shows correct portion of background
+
+4. **4 Individual Cells** (spans both edges):
+   - Four `.gap-wrapper.big-cell` elements (1×1 each)
+   - Each cell positioned independently
+   - Each shows correct portion of background
+
+**Implementation Details**:
+- Duplicate elements marked with `data-duplicate-of` attribute
+- Original element hidden when spanning edges (`display: none`)
+- Duplicates removed and recreated on each render
+- Background positioning adjusted for each segment's offset
+
+#### Identity System
+Like all gaps, large gaps maintain their identity:
+- **Identity** (`homeX`, `homeY`): Top-left corner of the gap's home position
+- **Position** (`x`, `y`): Current top-left corner position
+- **Background Crop**: Based on identity, shows darkened portion of puzzle image
+- **Win Condition**: Must return to identity position
+
+#### Mouse/Touch Controls
+- **Click Detection**: Checks all 4 cells of large gap
+- **Drag Controls**: Supports dragging over large gaps
+- **Swipe Controls**: Recognizes large gaps as valid destinations
+- **Selection**: Clicking any cell of large gap selects it
+
+#### Keyboard Controls
+- **Spacebar**: Cycles through all gaps (includes large gaps)
+- **Arrow Keys**: Moves pieces into large gaps or swaps large gaps
+- **Same-Size Rule**: Enforced for gap swapping
 
 ### Wrapping System
 
@@ -154,8 +266,8 @@ The game supports optional horizontal and vertical wrapping, creating a toroidal
 
 #### Wrapped Rendering
 
-**Large Piece Rendering with Wrapping**:
-When wrapping is enabled, large pieces (2×2) that span board edges are rendered intelligently based on the wrap direction:
+**Large Piece and Large Gap Rendering with Wrapping**:
+When wrapping is enabled, 2×2 entities (large pieces and large gaps) that span board edges are rendered intelligently based on the wrap direction:
 
 **Rendering Strategy**:
 1. **No Wrapping** (piece doesn't span any edge):
@@ -182,9 +294,10 @@ When wrapping is enabled, large pieces (2×2) that span board edges are rendered
 - Detects wrapping by normalizing all 4 cell coordinates and checking for non-contiguous positions
 - Creates duplicate DOM elements with `data-duplicate-of` attribute for identification
 - Duplicates are removed and recreated on each render
-- Original 2×2 element is hidden when piece spans edges (`display: none`)
-- Each segment displays correct portion of background image based on its offset within the original piece
-- Segments use `.tile.big` class for strips (1×2 or 2×1) and `.tile.big-cell` class for individual cells (1×1)
+- Original 2×2 element is hidden when entity spans edges (`display: none`)
+- Each segment displays correct portion of background image based on its offset within the original entity
+- **For large pieces**: Segments use `.tile.big` class for strips and `.tile.big-cell` for individual cells
+- **For large gaps**: Segments use `.gap-wrapper.big` for strips and `.gap-wrapper.big-cell` for individual cells, each containing `.gap` or `.gap.big` inner element
 
 **Benefits**:
 - Optimal rendering: Only splits piece in direction(s) where it actually wraps
@@ -199,11 +312,12 @@ When wrapping is enabled, large pieces (2×2) that span board edges are rendered
 - Destination coordinates are normalized using `normalizeCoords()`
 - Movement validation checks wrapped adjacency
 
-**Large Pieces (2×2)**:
-- All 4 cells of the piece are normalized independently
+**Large Pieces and Large Gaps (2×2)**:
+- All 4 cells are normalized independently
 - Can span across board edges (e.g., cells at x=7 and x=0 on an 8-wide board)
-- Both gaps must be properly aligned considering wrapping
-- Gap alignment validation uses normalized coordinates
+- For large piece movement: destination must be 2 aligned small gaps OR 1 large gap
+- For large gap swapping: both gaps must be same size (large ↔ large only)
+- Alignment validation uses normalized coordinates
 
 **Gap Swapping**:
 - Gaps can swap positions across board edges
@@ -345,11 +459,39 @@ When wrapping is enabled, additional adjacency relationships exist:
 - **Help Button** (?): Opens controls reference dialog
 
 ### Movement Rules
-1. **Small Pieces (1×1)**: Can move into any adjacent gap
-2. **Large Pieces (2×2)**: Require BOTH gaps to be properly aligned on the destination face
-3. **Gap Swapping**: Adjacent gaps can swap positions using arrow keys
+
+#### Basic Movement
+1. **Small Pieces (1×1)**: Can move into any adjacent gap (small or large)
+2. **Large Pieces (2×2)**: Can move into 2 aligned small gaps OR swap with a large gap
+3. **Gap Swapping**: Adjacent gaps can swap positions, but only if they are the same size
 4. **Selection**: Only the selected gap (highlighted with blue outline) accepts moves
 5. **Challenge Completion**: When puzzle is solved in Challenge Mode, all moves are locked and gaps lose highlighting until reset or mode switch
+
+#### Large Gap Movement Rules
+Large gaps (2×2) introduce new movement possibilities while maintaining the constraint that large gaps must always stay connected as 2×2 blocks:
+
+1. **Small Piece Movement**:
+   - Small pieces can move into small gaps (1×1)
+   - Small pieces cannot move into large gaps because large gaps must remain connected as 2×2 blocks
+
+2. **Large Piece Movement**:
+   - Can move into 2 aligned small gaps
+   - Can swap with a large gap (both 2×2)
+   - Example swap: Large piece at (0,0)-(1,1) swaps with large gap at (2,2)-(3,3)
+   - All 4 cells of each entity are swapped simultaneously
+
+3. **Large Gap Movement**:
+   - Can move into 2 aligned small pieces or small gaps (or a combination)
+   - The 2 destination cells must be properly aligned (both in same row or same column)
+   - Example: Large gap at (2,2)-(3,3) moving right requires cells (4,2) and (4,3) to contain small pieces/gaps
+   - The moved pieces/gaps are repositioned to the cells freed by the large gap
+   - Works symmetrically to large piece movement
+
+4. **Gap Swapping Rules**:
+   - **Small ↔ Small**: Two small gaps can swap positions
+   - **Large ↔ Large**: Two large gaps can swap positions
+   - **Small ↔ Large**: CANNOT swap (different sizes)
+   - Size matching enforced to maintain puzzle solvability
 
 ## Code Architecture
 
@@ -452,7 +594,8 @@ The game has two distinct modes:
 boardConfig          // Object defining board layout
   .width             // Board width in tiles (8)
   .height            // Board height in tiles (8)
-  .gapIdentities[]   // Array of gap identity positions [{x, y}, ...]
+  .gapIdentities[]   // Array of small gap identity positions [{x, y}, ...]
+  .largeGapIdentities[]  // Array of large gap identity positions (top-left corners) [{x, y}, ...]
   .largePieces[]     // Array of large piece top-left corners [{x, y}, ...]
 ```
 
@@ -461,11 +604,13 @@ boardConfig          // Object defining board layout
 boardConfig          // Currently active board configuration object
 currentBoardSlug     // Current board slug ('default', 'horizontal', 'vertical')
 boardRegistry        // Map of board slugs to board configuration objects
-grid                 // 2D array: {type:'gap'|'small'|'big', id, ox, oy} for occupied cells, null for empty
-pieces[]             // Unified array: {id, type, isGap, x, y, homeX, homeY, el, innerEl, selected}
+grid                 // 2D array: {type:'gap'|'small'|'big'|'biggap', id, ox, oy} for occupied cells, null for empty
+pieces[]             // Unified array: {id, isGap, isLarge, x, y, homeX, homeY, el, innerEl, selected}
                      // - All game objects (small tiles, large tiles, gaps) in single array
                      // - isGap flag determines if piece acts as gap or regular piece
+                     // - isLarge flag determines if piece is 2×2 (large piece or large gap)
                      // - selected flag indicates which gap is currently selected
+                     // - No 'type' property; grid cell types derived from flags
 pieceById            // Map for quick piece lookup by ID (replaces tileById)
 gameMode             // 'freeplay' or 'challenge'
 challengeSeed        // Seed used for current challenge (null in Free Play)
@@ -487,28 +632,45 @@ challengeWrapVertical    // Boolean flag for vertical wrapping in Challenge mode
 
 #### Grid Cell Format
 - `null`: Empty cell (unused)
-- `{type:'gap', id}`: Gap piece
-- `{type:'small', id}`: Small piece
-- `{type:'big', id, ox, oy}`: Part of big piece (ox,oy = offset within 2×2)
+- `{type:'gap', id}`: Small gap piece (1×1)
+- `{type:'biggap', id, ox, oy}`: Part of large gap (2×2, ox,oy = offset within 2×2)
+- `{type:'small', id}`: Small piece (1×1)
+- `{type:'big', id, ox, oy}`: Part of large piece (2×2, ox,oy = offset within 2×2)
 
 #### Piece Object Format
 All pieces (including gaps) share the same structure:
 ```javascript
 {
-  id: 'S0' | 'B0' | 'G0',  // Unique identifier (S=small, B=big, G=gap)
-  type: 'small' | 'big' | 'gap',  // Piece type
+  id: 'S0' | 'B0' | 'G0' | 'BG0',  // Unique identifier (S=small, B=big, G=gap, BG=big gap)
   isGap: boolean,          // True if this piece acts as a gap
-  x: number,               // Current X position on board
-  y: number,               // Current Y position on board
-  homeX: number,           // Identity X position (for background crop)
-  homeY: number,           // Identity Y position (for background crop)
+  isLarge: boolean,        // True if this is a 2×2 entity (large piece or large gap)
+  x: number,               // Current X position on board (top-left for 2×2)
+  y: number,               // Current Y position on board (top-left for 2×2)
+  homeX: number,           // Identity X position (for background crop, top-left for 2×2)
+  homeY: number,           // Identity Y position (for background crop, top-left for 2×2)
   el: HTMLElement,         // DOM element (.tile or .gap-wrapper)
   innerEl: HTMLElement | null,  // Inner element (only for gaps: .gap)
   selected: boolean        // True if this gap is currently selected (gaps only)
 }
 ```
 
+**Note**: The `type` property has been removed. Grid cell type strings ('small', 'big', 'gap', 'biggap') are derived from `isGap` and `isLarge` flags using the `getGridCellType()` helper function.
+
 ### Core Functions
+
+#### Helper Functions
+
+- `getGridCellType(piece)`: Derives grid cell type string from piece properties
+  - Returns 'small', 'big', 'gap', or 'biggap' based on `isGap` and `isLarge` flags
+  - Used by `buildGridFromState()` to populate grid cells
+  - Eliminates need for storing redundant `type` property on pieces
+
+- `calculateLargePieceDestination(piece, dx, dy)`: Calculates destination and freed cells for large piece movement
+  - Takes a large piece and direction vector (dx, dy)
+  - Returns `{destCells: [{x,y}, {x,y}], freedCells: [{x,y}, {x,y}]}` or `null` if invalid
+  - Handles wrapping logic and boundary checking
+  - **Eliminates duplicate code**: Used by both `tryMove()` and `enumerateValidMoves()`
+  - Reduces ~80 lines of duplicate logic between the two functions
 
 #### Background Image Management
 - `getBackgroundImageForPosition(x, y)`: Determines which background image a tile should use
@@ -540,15 +702,23 @@ All pieces (including gaps) share the same structure:
 
 #### Initialization
 - `createPiece(type, id, x, y)`: Helper function to create any piece type uniformly
-  - Creates appropriate DOM structure (`.tile` for pieces, `.gap-wrapper` + `.gap` for gaps)
+  - Supports types: `'small'`, `'big'`, `'gap'`, `'biggap'`
+  - Creates appropriate DOM structure:
+    - `.tile` for regular pieces
+    - `.gap-wrapper` + `.gap` for small gaps
+    - `.gap-wrapper.big` + `.gap.big` for large gaps
+  - Sets `isGap` flag for gap types (`'gap'` and `'biggap'`)
+  - Sets `isLarge` flag for 2×2 types (`'big'` and `'biggap'`)
   - Sets background image and positioning using `getBackgroundStyleForTile()`
   - Returns unified piece object with all required properties
   - Used by `initTiles()` for consistent piece creation
 
 - `initTiles()`: Creates all piece DOM elements and data structures
-  - Builds big pieces first from `boardConfig.largePieces` array
+  - Builds coverage mask for both large pieces and large gaps
+  - Creates large pieces first from `boardConfig.largePieces` array
+  - Creates large gaps from `boardConfig.largeGapIdentities` array
   - Creates small pieces for remaining uncovered, non-gap identity cells
-  - Creates gap pieces for cells in `boardConfig.gapIdentities` array
+  - Creates small gap pieces for cells in `boardConfig.gapIdentities` array
   - All pieces stored in unified `pieces[]` array
   - Sets first gap as selected using `piece.selected = true`
   - **Sets background image dynamically** using `getBackgroundStyleForTile()`
@@ -556,9 +726,11 @@ All pieces (including gaps) share the same structure:
 - `buildGridFromState()`: Rebuilds grid array from current piece positions
   - Creates grid with dimensions `boardConfig.width` × `boardConfig.height`
   - Iterates through unified `pieces` array
-  - Places big pieces (occupying 2×2 cells each)
-  - Places small pieces and gaps (occupying 1 cell each)
-  - Grid cells use `{type:'gap', id}` for gaps instead of `null`
+  - Uses `getGridCellType()` to derive type string from piece flags
+  - Uses `isLarge` flag to identify 2×2 entities (large pieces and large gaps)
+  - Places large pieces and large gaps (occupying 2×2 cells each with wrapping support)
+  - Places small pieces and small gaps (occupying 1 cell each)
+  - Grid cells use `{type:'gap', id}` for small gaps and `{type:'biggap', id, ox, oy}` for large gaps
 
 - `resetState()`: Resets to solved state
   - Removes existing piece DOM elements (`.tile` and `.gap-wrapper`)
@@ -568,6 +740,15 @@ All pieces (including gaps) share the same structure:
 #### Rendering
 - `renderAll()`: Updates all piece positions in DOM
   - Iterates through unified `pieces` array
+  - **Large Gap Rendering with Wrapping**:
+    - Detects if large gap spans board edges (wrapping enabled)
+    - **4 Individual Cells**: When spanning both horizontal and vertical edges
+    - **2 Vertical Strips (1×2)**: When spanning horizontal edge only
+    - **2 Horizontal Strips (2×1)**: When spanning vertical edge only
+    - **Normal 2×2**: When not spanning any edges
+    - Creates duplicate DOM elements with `data-duplicate-of` attribute
+    - Uses `.gap-wrapper.big` and `.gap-wrapper.big-cell` classes
+    - Inner elements use `.gap.big` class
   - Sets CSS `left` and `top` properties based on x,y coordinates
   - For gaps: toggles `.selected` class based on `piece.selected` flag
   - Hides selection highlighting when challenge is solved
@@ -583,28 +764,52 @@ All pieces (including gaps) share the same structure:
     - `tryMove('down')` looks at `g.y - 1` (ABOVE the gap)
     - `tryMove('up')` looks at `g.y + 1` (BELOW the gap)
   - **For gap swapping**: To swap with a gap that's to the RIGHT, call `tryMove('left')` (not `tryMove('right')`)
+  - **IMPORTANT FOR LARGE GAPS**: When the selected gap is large (2×2), the source position lookup must look BEYOND the gap's extent to avoid finding the gap itself
+    - For large gaps: `dir='up'` looks at `y + 2` (below the gap's bottom edge)
+    - For large gaps: `dir='down'` looks at `y - 1` (above the gap's top edge)
+    - For large gaps: `dir='left'` looks at `x + 2` (right of the gap's right edge)
+    - For large gaps: `dir='right'` looks at `x - 1` (left of the gap's left edge)
+    - For small gaps: Uses standard offset (+1 or -1)
   - Finds selected gap using `pieces.find(p => p.isGap && p.selected)`
   - Calculates source cell and direction vector from selected gap
   - **Performance Optimization**: Uses incremental grid updates instead of rebuilding entire grid
     - Updates only affected cells directly in the grid array
     - Skips DOM rendering during shuffle in Challenge Mode (controlled by `skipRender` flag)
-  - **Gap Swapping**: If source cell type is 'gap', swaps positions with that gap
-    - Updates 2 grid cells directly
-  - **Small Piece Moves**: Moves piece into gap, gap takes piece's former position
-    - Swaps 2 grid cells directly
-  - **Big Piece Moves**:
-    - Calculates destination face cells (must be both gaps)
-    - Validates both gaps are properly aligned
-    - Moves piece and repositions both gaps to freed cells
-    - Maintains gap alignment by row/column
-    - Clears old 2×2 area and writes new 2×2 area in grid
-    - Updates gap positions in grid
+  - **Gap Swapping**: If source cell is a gap (small or large), swaps positions with that gap
+    - **Size Matching Required**: Only swaps if both gaps are the same size
+    - Small gap ↔ small gap: Updates 2 grid cells
+    - Large gap ↔ large gap: Updates 8 grid cells (4 for each gap)
+    - Different sizes: Falls through to check other movement options
+  - **Small Piece Moves**: Checks `!movingPiece.isLarge` flag
+    - Into small gap: Swaps 2 grid cells
+    - Into large gap: Clears 4 cells (old gap), sets 1 cell (piece), sets 4 cells (gap at new position)
+  - **Big Piece Moves**: Checks `movingPiece.isLarge` flag
+    - Uses `calculateLargePieceDestination()` helper to get destination and freed cells
+    - **Into 2 Small Gaps** (original behavior):
+      - Validates both gaps are properly aligned
+      - Moves piece and repositions both gaps to freed cells
+      - Maintains gap alignment by row/column
+      - Clears old 2×2 area and writes new 2×2 area in grid
+      - Updates gap positions in grid
+    - **Swap with Large Gap** (new behavior):
+      - Verifies all 4 destination cells belong to same large gap
+      - Swaps positions of large piece and large gap
+      - Clears old positions (8 cells total)
+      - Sets new positions (8 cells total)
   - Returns true on success, false if move is invalid
 
 - `enumerateValidMoves()`: Returns all legal moves for current state
-  - Filters gap pieces from `pieces` array
+  - Filters gap pieces from `pieces` array (includes both small and large gaps)
   - Iterates through each gap and all four directions
+  - **IMPORTANT FOR LARGE GAPS**: Uses same extended lookup logic as `tryMove()`
+    - For large gaps: looks beyond the 2×2 extent to avoid finding the gap itself
+    - For small gaps: uses standard offset
   - Checks validity of each potential move
+  - **Uses `calculateLargePieceDestination()` helper** to eliminate duplicate code
+  - **Large Gap Support**:
+    - Recognizes `'biggap'` type in source cells
+    - Checks for large gap destinations when moving large pieces
+    - Enforces same-size gap swapping (small↔small, large↔large)
   - Returns moves with gap piece reference instead of index
   - Tags each move with metadata: `gap` (gap piece object), `isBig`, `isGapSwap`
   - Used by `shuffle()` function
@@ -709,13 +914,17 @@ The mouse control system uses shared utility functions to eliminate code duplica
 
 - `getCellsForTile(piece, clickedCell, gridX, gridY)`: Returns array of cells to check for a piece
   - Small pieces (1×1): Returns single cell `[{x, y}]`
-  - Big pieces (2×2): Returns all 4 cells of the piece
+  - Large pieces (2×2): Returns all 4 normalized cells of the piece
+  - Large gaps (2×2): Returns all 4 normalized cells of the gap
+  - Handles wrapping by normalizing coordinates
   - Used by all control methods for consistent cell enumeration
 
 - `findAdjacentGaps(cells)`: Determines which gaps are adjacent to given cells
   - Filters gap pieces from `pieces` array
   - Returns array of `{gap, dx, dy}` for each adjacent gap
-  - Checks all cells against all gaps
+  - **For large gaps**: Checks ALL 4 cells of the gap for adjacency, not just the top-left corner
+  - **For small gaps**: Checks single cell position
+  - Handles both direct adjacency and wrapped adjacency
   - Stores direction vectors for later use
   - Eliminates duplicate adjacency checking logic
 
@@ -820,6 +1029,17 @@ Gaps show darkened version (brightness 0.5) of their default positions, maintain
 5. Test with both small and large pieces
 6. Ensure gap identity is preserved (gaps remember their home crop)
 7. **IMPORTANT**: Remember that `tryMove(dir)` direction is inverted - it looks in the OPPOSITE direction of where you want to move something. The `vectorToDirection()` utility handles this automatically.
+8. **CRITICAL FOR LARGE GAPS**: When implementing movement logic for large gaps (2×2), remember:
+   - The source position lookup must look BEYOND the gap's 2×2 extent
+   - Otherwise, the code will find the gap itself instead of adjacent pieces
+   - Use `gap.y + 2` for `dir='up'`, `gap.y - 1` for `dir='down'`, etc.
+   - This applies to BOTH `tryMove()` and `enumerateValidMoves()` functions
+   - The same extended lookup logic must be used in both places for consistency
+9. **MOUSE CONTROL ADJACENCY**: When checking if pieces are adjacent to large gaps:
+   - Check ALL 4 cells of the large gap, not just the top-left corner
+   - A piece at (0,7) IS adjacent to a large gap at (0,5) because the gap occupies (0,5), (1,5), (0,6), (1,6)
+   - The `findAdjacentGaps()` function must enumerate all gap cells before checking adjacency
+   - This ensures mouse/swipe controls work correctly with large gaps
 
 ### When Adding Features
 - Keep the three-file structure (HTML/CSS/JS separation)
@@ -1247,14 +1467,18 @@ For screens 600px wide or smaller, dialogs automatically adapt for better mobile
 All game objects (tiles and gaps) use the same data structure:
 - **Unified Storage**: All pieces stored in single `pieces[]` array
 - **Gap Flag**: `isGap` boolean determines if piece acts as gap or regular piece
+- **Large Flag**: `isLarge` boolean determines if piece is 2×2 (large piece or large gap)
+- **No Type Property**: Pieces no longer store a `type` property
+  - Grid cell type strings derived from flags using `getGridCellType()`
+  - Single source of truth: behavior determined solely by `isGap` and `isLarge`
 - **Selection**: Gaps use `selected` boolean flag instead of separate index variable
 - **DOM Structure**:
-  - Regular pieces: Single `.tile` element
-  - Gaps: `.gap-wrapper` containing `.gap` inner element (for selection highlighting)
+  - Regular pieces: Single `.tile.small` or `.tile.big` element
+  - Gaps: `.gap-wrapper` (+ `.big` for large) containing `.gap` (+ `.big` for large) inner element
 - **Identity System**: All pieces remember `homeX`/`homeY` for background crop
 - **Easy Conversion**: Toggling `isGap` flag converts between piece and gap
   - Used by gap randomization to reassign which cells are gaps
-  - Requires updating DOM structure and `type` property
+  - Requires updating DOM structure only (no `type` property to update)
   - Much simpler than creating/destroying objects
 
 ### Gap Randomization System
@@ -1274,13 +1498,14 @@ The `performGapRandomization()` function converts pieces to/from gaps:
 - Simpler and more efficient than old system
 
 ### Large Piece Movement Algorithm
-In `tryMove()` for big pieces:
-1. Calculate destination face cells (2 cells in movement direction)
-2. Calculate freed cells (2 cells on opposite face)
-3. Verify both destination cells are gaps
-4. Verify selected gap is one of the destination cells
-5. Map each gap to corresponding freed cell (aligned by row/col)
-6. Move piece and reposition both gaps simultaneously
+In `tryMove()` for large pieces (checked via `movingPiece.isLarge`):
+1. Use `calculateLargePieceDestination()` helper to get destination and freed cells
+2. Verify both destination cells are gaps
+3. Verify selected gap is one of the destination cells
+4. Map each gap to corresponding freed cell (aligned by row/col)
+5. Move piece and reposition both gaps simultaneously
+
+**Code Reuse**: The `calculateLargePieceDestination()` helper eliminates ~80 lines of duplicate code between `tryMove()` and `enumerateValidMoves()`.
 
 ### Shuffle Algorithm
 `shuffle(steps, seed)` ensures solvability with intelligent move selection using a **Distance-Based + Adaptive** system:
