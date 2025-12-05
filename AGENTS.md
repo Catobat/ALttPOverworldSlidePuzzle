@@ -6,15 +6,10 @@ This file contains specific rules and guidelines for AI coding assistants workin
 
 ### Browser Testing
 - **DO NOT** open browsers or attempt to test the application yourself unless explicitly requested by the user
-- **DO NOT** assume how the application will behave in a browser
-- **ALWAYS** ask the user to test changes in their browser and report results
 - When changes are made, provide clear testing instructions for the user
 
 ### Terminal Commands
 - **DO NOT** execute terminal commands unless explicitly requested by the user
-- **DO NOT** run build scripts, package managers, or any CLI tools without permission
-- If a command seems necessary, **ASK** the user if they want you to run it
-- Exception: You may suggest commands for the user to run themselves
 
 ## Project-Specific Rules
 
@@ -30,7 +25,7 @@ This project uses a strict three-file structure:
 - Don't mix concerns between files
 
 ### Documentation Updates
-- **ALWAYS** update [`.kilocode/rules/general.md`](.kilocode/rules/general.md) after adding new functionality or making significant changes
+- **ALWAYS** update [`Documentation.md`](Documentation.md) after adding new functionality or making significant changes
 - Keep the technical documentation comprehensive and accurate
 - For player-facing changes (new features, controls, game modes), **CONSIDER** updating [`README.md`](README.md)
 - Keep [`README.md`](README.md) brief and user-focused - only include what players need to know
@@ -40,10 +35,17 @@ This project uses a strict three-file structure:
 - Reference code by function names, variable names, class names, or other stable identifiers
 - Line numbers change frequently and make documentation maintenance difficult
 - Example: Use `initTiles()` instead of `initTiles() (line 92)`
-- Exception: Line numbers are acceptable in temporary debugging notes or issue reports
 
 ### After Making Changes
 - **WAIT** for user confirmation of success
 - **PROVIDE** clear testing instructions
-- **BE READY** to fix issues based on user feedback
 - **DON'T** assume everything works without testing
+
+### Input Behavior
+- **CHECK** [`Documentation.md`](Documentation.md) before changing mouse or keyboard input behavior for the game board or core game mechanics
+- Verify that changes don't break any intended existing behavior as documented
+
+### UI Responsiveness
+- **ENSURE** all UI elements remain usable on small screens, including phones
+- Make modal windows scrollable to prevent content from being cut off
+- Keep the automatic board scaling system updated when adding new UI elements

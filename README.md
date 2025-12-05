@@ -51,7 +51,7 @@ index.html?seed=12345&steps=250&board=horizontal
 
 ## Technical Details
 
-For comprehensive technical documentation, game mechanics, and development guidelines, see [`.kilocode/rules/general.md`](.kilocode/rules/general.md).
+For comprehensive technical documentation, game mechanics, and development guidelines, see [`Documentation.md`](Documentation.md).
 
 ## Quick Start
 
