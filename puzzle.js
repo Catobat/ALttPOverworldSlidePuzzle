@@ -142,7 +142,6 @@
   const displayBtn = document.getElementById('displayBtn');
   const settingsDialog = document.getElementById('settingsDialog');
   const settingsBoardSelect = document.getElementById('settingsBoardSelect');
-  const settingsApplyBtn = document.getElementById('settingsApplyBtn');
   const settingsCancelBtn = document.getElementById('settingsCancelBtn');
   const resetGapsBtn = document.getElementById('resetGapsBtn');
   const randomizeGapsBtn = document.getElementById('randomizeGapsBtn');
@@ -3796,24 +3795,19 @@
     boardEl.focus();
   });
 
-  settingsApplyBtn.addEventListener('click', () => {
+  // Board select change handler - applies instantly
+  settingsBoardSelect.addEventListener('change', () => {
     const selectedBoard = settingsBoardSelect.value;
-    settingsDialog.style.display = 'none';
     
     // Switch board if different
     if (selectedBoard !== currentBoardSlug) {
       switchBoard(selectedBoard);
     }
-    
-    boardEl.focus();
   });
 
-  // Allow Enter to apply, Escape to cancel
+  // Allow Escape to close
   settingsDialog.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      settingsApplyBtn.click();
-    } else if (e.key === 'Escape') {
+    if (e.key === 'Escape') {
       e.preventDefault();
       settingsCancelBtn.click();
     }
