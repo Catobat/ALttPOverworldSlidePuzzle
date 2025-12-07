@@ -1,11 +1,11 @@
 /**
  * input.js - Input handling (mouse, touch, keyboard)
- * 
+ *
  * This module contains all event handlers for user input including
  * keyboard controls, mouse controls (click, swipe, drag), and touch controls.
  */
 
-import { normalizeCoords, tryMove } from './moves.js';
+import { normalizeCoords, tryMove, enumerateValidMoves } from './moves.js';
 
 // ============================================================================
 // MOUSE CONTROL STATE
@@ -17,7 +17,6 @@ let mouseDownGridPos = null;
 let mouseDownSelectedGapIdx = null; // Track which gap was selected when mousedown occurred
 let swipePreviewActive = false;
 let swipePreviewTile = null;
-let swipePreviewOffset = { x: 0, y: 0 };
 let lastDragGapPos = null; // Track last gap position we dragged over to prevent repeated moves
 let lastDragCell = null; // Track the last cell position during drag to prevent flickering
 let dragControlUsed = false; // Flag to disable swipe controls after drag control is used
@@ -304,20 +303,7 @@ function handlePointerStart(state, e) {
     return;
   }
 
-  // Store pointer down position and time
-  mouseDownPos = { x: pos.x, y: pos.y };
-  mouseDownTime = Date.now();
-  mouseDownGridPos = { x: gridX, y: gridY };
-  
-  // Store which gap was selected before this pointer down
-  const selectedGap = state.pieces.find(p => p.isGap && p.selected);
-  mouseDownSelectedGapIdx = selectedGap ? state.pieces.filter(p => p.isGap).indexOf(selectedGap) : 0;
-  
-  lastDragGapPos = null; // Reset drag tracking for new drag session
-  lastDragCell = null; // Reset cell tracking for new drag session
-  dragControlUsed = false; // Reset drag control flag for new drag session
-  
-  // Check if we clicked on a gap and select it (handles both small and large gaps)
+  // Check if we clicked on a gap FIRST (before storing selection state)
   let clickedGap = state.pieces.find(p => p.isGap && p.x === gridX && p.y === gridY);
   
   // If not found at exact position, check if we clicked on any cell of a large gap
@@ -328,10 +314,26 @@ function handlePointerStart(state, e) {
     }
   }
   
+  // Store which gap was selected BEFORE any selection changes
+  const selectedGap = state.pieces.find(p => p.isGap && p.selected);
+  mouseDownSelectedGapIdx = selectedGap ? state.pieces.filter(p => p.isGap).indexOf(selectedGap) : 0;
+  
+  // Store pointer down position and time
+  mouseDownPos = { x: pos.x, y: pos.y };
+  mouseDownTime = Date.now();
+  mouseDownGridPos = { x: gridX, y: gridY };
+  
+  lastDragGapPos = null; // Reset drag tracking for new drag session
+  lastDragCell = null; // Reset cell tracking for new drag session
+  dragControlUsed = false; // Reset drag control flag for new drag session
+  
   if (clickedGap) {
-    state.pieces.forEach(p => p.selected = false);
-    clickedGap.selected = true;
-    state.renderAll();
+    // Only change selection if this gap wasn't already selected
+    if (!clickedGap.selected) {
+      state.pieces.forEach(p => p.selected = false);
+      clickedGap.selected = true;
+      state.renderAll();
+    }
     draggedPieceId = null; // Not dragging a piece
   } else {
     // Store the piece ID if we clicked on a piece
@@ -413,40 +415,35 @@ function handlePointerMove(state, e) {
       }
       
       if (isCurrentCellGap && otherGap && currentGap === otherGap) {
-        // We're over the other gap - check if it's adjacent
-        const dx = currentGridX - mouseDownGridPos.x;
-        const dy = currentGridY - mouseDownGridPos.y;
+        // We're over the other gap - try to swap them
+        const gapPosKey = `${currentGridX},${currentGridY}`;
         
-        if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-          // Other gap is adjacent - swap them
-          const gapPosKey = `${currentGridX},${currentGridY}`;
+        if (lastDragGapPos !== gapPosKey) {
+          const dx = currentGridX - mouseDownGridPos.x;
+          const dy = currentGridY - mouseDownGridPos.y;
+          const swapDir = vectorToDirection(dx, dy, true); // Invert for gap swap
           
-          if (lastDragGapPos !== gapPosKey) {
-            const swapDir = vectorToDirection(dx, dy, true); // Invert for gap swap
+          if (swapDir) {
+            const moveSuccess = tryMove(state, swapDir, startGap);
             
-            if (swapDir) {
-              const moveSuccess = tryMove(state, swapDir);
-              
-              if (moveSuccess) {
-                dragControlUsed = true;
-                lastDragGapPos = gapPosKey;
-                // Clear any swipe preview
-                if (swipePreviewActive) {
-                  // Clear all piece previews (handles both single and multiple pieces)
-                  state.pieces.forEach(p => {
-                    if (p.el.style.transform) {
-                      p.el.style.transform = '';
-                    }
-                  });
-                  swipePreviewActive = false;
-                  swipePreviewTile = null;
-                  swipePreviewOffset = { x: 0, y: 0 };
-                }
-                // Update mouseDownGridPos to the new gap position after the swap
-                const selectedGap = state.pieces.find(p => p.isGap && p.selected);
-                if (selectedGap) {
-                  mouseDownGridPos = { x: selectedGap.x, y: selectedGap.y };
-                }
+            if (moveSuccess) {
+              dragControlUsed = true;
+              lastDragGapPos = gapPosKey;
+              // Clear any swipe preview
+              if (swipePreviewActive) {
+                // Clear all piece previews (handles both single and multiple pieces)
+                state.pieces.forEach(p => {
+                  if (p.el.style.transform) {
+                    p.el.style.transform = '';
+                  }
+                });
+                swipePreviewActive = false;
+                swipePreviewTile = null;
+              }
+              // Update mouseDownGridPos to the new gap position after the swap
+              const selectedGap = state.pieces.find(p => p.isGap && p.selected);
+              if (selectedGap) {
+                mouseDownGridPos = { x: selectedGap.x, y: selectedGap.y };
               }
             }
           }
@@ -458,73 +455,46 @@ function handlePointerMove(state, e) {
         
         const piece = state.pieceById.get(currentCell.id);
         if (piece) {
-          // Get cells to check for adjacency
-          const cellsToCheck = getCellsForTile(state, piece, currentCell, currentGridX, currentGridY);
+          const piecePosKey = `${currentGridX},${currentGridY}`;
           
-          // Get all cells of the gap (1 for small, 4 for large)
-          let gapCells;
-          if (startGap.isLarge) {
-            const c1 = normalizeCoords(state, startGap.x, startGap.y);
-            const c2 = normalizeCoords(state, startGap.x + 1, startGap.y);
-            const c3 = normalizeCoords(state, startGap.x, startGap.y + 1);
-            const c4 = normalizeCoords(state, startGap.x + 1, startGap.y + 1);
-            gapCells = [
-              {x: c1.x, y: c1.y},
-              {x: c2.x, y: c2.y},
-              {x: c3.x, y: c3.y},
-              {x: c4.x, y: c4.y}
-            ];
-          } else {
-            gapCells = [{x: mouseDownGridPos.x, y: mouseDownGridPos.y}];
-          }
-          
-          // Find if piece is adjacent to ANY cell of the gap and check valid drag region
-          let isAdjacent = false;
-          let adjacentDir = null;
-          
-          for (const cell of cellsToCheck) {
-            for (const gapCell of gapCells) {
-              const dx = cell.x - gapCell.x;
-              const dy = cell.y - gapCell.y;
-              
-              if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-                isAdjacent = true;
-                // Check if mouse is in valid drag region
-                if (isInValidDragRegion(cellX, cellY, dx, dy, state.tilePx)) {
-                  adjacentDir = vectorToDirection(dx, dy, true); // Invert for gap drag
-                }
-                break;
-              }
-            }
-            if (isAdjacent && adjacentDir) break;
-          }
-          
-          if (isAdjacent && adjacentDir) {
-            const piecePosKey = `${currentGridX},${currentGridY}`;
+          // Only trigger move if this is a different piece than the last one we dragged over
+          if (lastDragGapPos !== piecePosKey) {
+            // Calculate direction from gap to piece for drag region check
+            // For gap drag: gap is at mouseDownGridPos, piece is at currentGridX/Y
+            const gapToPieceDx = currentGridX - mouseDownGridPos.x;
+            const gapToPieceDy = currentGridY - mouseDownGridPos.y;
             
-            // Only trigger move if this is a different piece than the last one we dragged over
-            if (lastDragGapPos !== piecePosKey) {
-              const moveSuccess = tryMove(state, adjacentDir);
+            // Normalize to -1, 0, or 1
+            const normDx = gapToPieceDx === 0 ? 0 : (gapToPieceDx > 0 ? 1 : -1);
+            const normDy = gapToPieceDy === 0 ? 0 : (gapToPieceDy > 0 ? 1 : -1);
+            
+            // Check if mouse is in valid drag region (gap is source, piece is target)
+            if (isInValidDragRegion(cellX, cellY, normDx, normDy, state.tilePx)) {
+              const adjacentDir = vectorToDirection(normDx, normDy, true); // Invert for gap drag
               
-              if (moveSuccess) {
-                dragControlUsed = true;
-                lastDragGapPos = piecePosKey;
-                // Clear any swipe preview
-                if (swipePreviewActive) {
-                  // Clear all piece previews (handles both single and multiple pieces)
-                  state.pieces.forEach(p => {
-                    if (p.el.style.transform) {
-                      p.el.style.transform = '';
-                    }
-                  });
-                  swipePreviewActive = false;
-                  swipePreviewTile = null;
-                  swipePreviewOffset = { x: 0, y: 0 };
-                }
-                // Update mouseDownGridPos to the new gap position after the move
-                const selectedGap = state.pieces.find(p => p.isGap && p.selected);
-                if (selectedGap) {
-                  mouseDownGridPos = { x: selectedGap.x, y: selectedGap.y };
+              if (adjacentDir && tryMove(state, adjacentDir, startGap, null, true)) {
+                // Valid move found - execute it
+                const moveSuccess = tryMove(state, adjacentDir, startGap);
+                
+                if (moveSuccess) {
+                  dragControlUsed = true;
+                  lastDragGapPos = piecePosKey;
+                  // Clear any swipe preview
+                  if (swipePreviewActive) {
+                    // Clear all piece previews (handles both single and multiple pieces)
+                    state.pieces.forEach(p => {
+                      if (p.el.style.transform) {
+                        p.el.style.transform = '';
+                      }
+                    });
+                    swipePreviewActive = false;
+                    swipePreviewTile = null;
+                  }
+                  // Update mouseDownGridPos to the new gap position after the move
+                  const selectedGap = state.pieces.find(p => p.isGap && p.selected);
+                  if (selectedGap) {
+                    mouseDownGridPos = { x: selectedGap.x, y: selectedGap.y };
+                  }
                 }
               }
             }
@@ -546,87 +516,66 @@ function handlePointerMove(state, e) {
         const startPiece = draggedPieceId ? state.pieceById.get(draggedPieceId) : null;
         
         if (startPiece) {
-          // Get cells to check for adjacency
-          // For small pieces, use mouseDownGridPos directly (like gap drag does for small gaps)
-          // For large pieces, get all 4 cells based on piece's current position
-          let cellsToCheck;
-          if (startPiece.isLarge) {
-            const c1 = normalizeCoords(state, startPiece.x, startPiece.y);
-            const c2 = normalizeCoords(state, startPiece.x + 1, startPiece.y);
-            const c3 = normalizeCoords(state, startPiece.x, startPiece.y + 1);
-            const c4 = normalizeCoords(state, startPiece.x + 1, startPiece.y + 1);
-            cellsToCheck = [
-              {x: c1.x, y: c1.y},
-              {x: c2.x, y: c2.y},
-              {x: c3.x, y: c3.y},
-              {x: c4.x, y: c4.y}
-            ];
-          } else {
-            // For small pieces, use mouseDownGridPos (which tracks the piece's position)
-            cellsToCheck = [{x: mouseDownGridPos.x, y: mouseDownGridPos.y}];
-          }
+          // Track the piece's current position (before potential move)
+          const piecePosKey = `${startPiece.x},${startPiece.y}`;
           
-          // Find if gap is adjacent to piece and check valid drag region
-          let isAdjacent = false;
-          let adjacentDir = null;
-          
-          for (const cell of cellsToCheck) {
-            const dx = currentGridX - cell.x;
-            const dy = currentGridY - cell.y;
-            
-            if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-              isAdjacent = true;
-              // Check if mouse is in valid drag region (exclude edge closest to piece)
-              if (isInValidDragRegion(cellX, cellY, dx, dy, state.tilePx)) {
-                adjacentDir = vectorToDirection(dx, dy, false); // Normal direction for piece drag
+          // Only trigger move if we're over a different cell than the last move
+          // This prevents flickering when dragging a small piece into a large gap
+          if (lastDragGapPos !== piecePosKey && lastDragCell !== currentCellKey) {
+            // Get the gap at current position (handles both small and large gaps)
+            const gap = state.pieceById.get(currentCell.id);
+            if (gap) {
+              // For large pieces, we need to check all 4 cells to find which one is adjacent to the gap
+              let pieceCells;
+              if (startPiece.isLarge) {
+                const c1 = normalizeCoords(state, startPiece.x, startPiece.y);
+                const c2 = normalizeCoords(state, startPiece.x + 1, startPiece.y);
+                const c3 = normalizeCoords(state, startPiece.x, startPiece.y + 1);
+                const c4 = normalizeCoords(state, startPiece.x + 1, startPiece.y + 1);
+                pieceCells = [c1, c2, c3, c4];
+              } else {
+                pieceCells = [{x: startPiece.x, y: startPiece.y}];
               }
-              break;
-            }
-          }
-          
-          if (isAdjacent && adjacentDir) {
-            // Track the piece's current position (before potential move)
-            // This is analogous to gap drag tracking the piece position
-            const piecePosKey = `${startPiece.x},${startPiece.y}`;
-            
-            // Only trigger move if we're over a different cell than the last move
-            // This prevents flickering when dragging a small piece into a large gap
-            if (lastDragGapPos !== piecePosKey && lastDragCell !== currentCellKey) {
-              // Get the gap at current position (handles both small and large gaps)
-              const gap = state.pieceById.get(currentCell.id);
-              if (gap) {
-                // Temporarily select this gap for the move, then restore original selection
-                // This prevents selection interference during continuous dragging
-                const originalSelectedGap = state.pieces.find(p => p.isGap && p.selected);
-                state.pieces.forEach(p => p.selected = false);
-                gap.selected = true;
-                const moveSuccess = tryMove(state, adjacentDir);
+              
+              // Try to find a valid direction from any piece cell to the gap
+              let foundValidMove = false;
+              for (const pieceCell of pieceCells) {
+                const pieceToGapDx = currentGridX - pieceCell.x;
+                const pieceToGapDy = currentGridY - pieceCell.y;
                 
-                // Restore original gap selection after move
-                if (originalSelectedGap && moveSuccess) {
-                  state.pieces.forEach(p => p.selected = false);
-                  originalSelectedGap.selected = true;
-                }
+                // Normalize to -1, 0, or 1
+                const normDx = pieceToGapDx === 0 ? 0 : (pieceToGapDx > 0 ? 1 : -1);
+                const normDy = pieceToGapDy === 0 ? 0 : (pieceToGapDy > 0 ? 1 : -1);
                 
-                if (moveSuccess) {
-                  dragControlUsed = true;
-                  // Track piece position after move
-                  lastDragGapPos = piecePosKey;
-                  // Store the current cell position to prevent repeated moves on the same cell
-                  lastDragCell = currentCellKey;
-                  if (swipePreviewActive) {
-                    // Clear all piece previews (handles both single and multiple pieces)
-                    state.pieces.forEach(p => {
-                      if (p.el.style.transform) {
-                        p.el.style.transform = '';
+                // Check if mouse is in valid drag region (piece is source, gap is target)
+                if (isInValidDragRegion(cellX, cellY, normDx, normDy, state.tilePx)) {
+                  const adjacentDir = vectorToDirection(normDx, normDy, false); // Normal direction for piece drag
+                  
+                  if (adjacentDir && tryMove(state, adjacentDir, gap, null, true)) {
+                    // Valid move found - execute it
+                    const moveSuccess = tryMove(state, adjacentDir, gap);
+                    if (moveSuccess) {
+                      dragControlUsed = true;
+                      // Track piece position after move
+                      lastDragGapPos = piecePosKey;
+                      // Store the current cell position to prevent repeated moves on the same cell
+                      lastDragCell = currentCellKey;
+                      if (swipePreviewActive) {
+                        // Clear all piece previews (handles both single and multiple pieces)
+                        state.pieces.forEach(p => {
+                          if (p.el.style.transform) {
+                            p.el.style.transform = '';
+                          }
+                        });
+                        swipePreviewActive = false;
+                        swipePreviewTile = null;
                       }
-                    });
-                    swipePreviewActive = false;
-                    swipePreviewTile = null;
-                    swipePreviewOffset = { x: 0, y: 0 };
+                      // Update mouseDownGridPos to the piece's new position after the move
+                      mouseDownGridPos = { x: startPiece.x, y: startPiece.y };
+                      foundValidMove = true;
+                      break; // Exit loop after successful move
+                    }
                   }
-                  // Update mouseDownGridPos to the piece's new position after the move
-                  mouseDownGridPos = { x: startPiece.x, y: startPiece.y };
                 }
               }
             }
@@ -657,11 +606,6 @@ function handlePointerMove(state, e) {
         
         if (!clickedGap) return;
         
-        // Temporarily select this gap to check if move is valid
-        const originalSelectedGap = state.pieces.find(p => p.isGap && p.selected);
-        state.pieces.forEach(p => p.selected = false);
-        clickedGap.selected = true;
-        
         // Convert swipe direction to tryMove direction (inverted)
         const reverseDir = {
           'up': 'down',
@@ -671,57 +615,33 @@ function handlePointerMove(state, e) {
         };
         const tryMoveDir = reverseDir[swipeDir];
         
-        // Check if move would be valid by examining what tryMove would do
-        // We need to replicate the logic from tryMove to determine what piece would move
-        let fromX = clickedGap.x, fromY = clickedGap.y;
-        if (clickedGap.isLarge) {
-          // Large gap: look beyond the 2x2 extent
-          if (tryMoveDir === 'up') fromY = clickedGap.y + 2;
-          if (tryMoveDir === 'down') fromY = clickedGap.y - 1;
-          if (tryMoveDir === 'left') fromX = clickedGap.x + 2;
-          if (tryMoveDir === 'right') fromX = clickedGap.x - 1;
-        } else {
-          // Small gap: normal offset
-          if (tryMoveDir === 'up') fromY = clickedGap.y + 1;
-          if (tryMoveDir === 'down') fromY = clickedGap.y - 1;
-          if (tryMoveDir === 'left') fromX = clickedGap.x + 1;
-          if (tryMoveDir === 'right') fromX = clickedGap.x - 1;
-        }
+        // Use tryMove with dryRun to check if move is valid
+        const validMove = tryMove(state, tryMoveDir, clickedGap, null, true);
         
-        // Apply wrapping to source coordinates
-        const wrappedFrom = normalizeCoords(state, fromX, fromY);
-        fromX = wrappedFrom.x;
-        fromY = wrappedFrom.y;
-        
-        // Check bounds
-        let validMove = false;
+        // Determine what piece would move (if any) for preview
         let targetPiece = null;
-        
-        if (state.wrapHorizontal || state.wrapVertical || (fromX >= 0 && fromX < state.boardConfig.width && fromY >= 0 && fromY < state.boardConfig.height)) {
-          const sourceCell = state.grid[fromY]?.[fromX];
-          if (sourceCell) {
-            // Check if it's a valid move (piece or gap swap)
-            if (sourceCell.isGap) {
-              // Gap swap - check if same size
-              const otherGap = state.pieceById.get(sourceCell.id);
-              if (otherGap && clickedGap.isLarge === otherGap.isLarge) {
-                validMove = true;
-                // No preview for gap swaps
-              }
-            } else {
-              // Piece move - get the piece
-              targetPiece = state.pieceById.get(sourceCell.id);
-              if (targetPiece) {
-                validMove = true;
-              }
-            }
+        if (validMove) {
+          // Calculate source position to find the piece that would move
+          let fromX = clickedGap.x, fromY = clickedGap.y;
+          if (clickedGap.isLarge) {
+            if (tryMoveDir === 'up') fromY = clickedGap.y + 2;
+            if (tryMoveDir === 'down') fromY = clickedGap.y - 1;
+            if (tryMoveDir === 'left') fromX = clickedGap.x + 2;
+            if (tryMoveDir === 'right') fromX = clickedGap.x - 1;
+          } else {
+            if (tryMoveDir === 'up') fromY = clickedGap.y + 1;
+            if (tryMoveDir === 'down') fromY = clickedGap.y - 1;
+            if (tryMoveDir === 'left') fromX = clickedGap.x + 1;
+            if (tryMoveDir === 'right') fromX = clickedGap.x - 1;
           }
-        }
-        
-        // Restore original gap selection
-        state.pieces.forEach(p => p.selected = false);
-        if (originalSelectedGap) {
-          originalSelectedGap.selected = true;
+          
+          const wrappedFrom = normalizeCoords(state, fromX, fromY);
+          const sourceCell = state.grid[wrappedFrom.y]?.[wrappedFrom.x];
+          
+          // Only show preview for piece moves (not gap swaps)
+          if (sourceCell && !sourceCell.isGap) {
+            targetPiece = state.pieceById.get(sourceCell.id);
+          }
         }
         
         if (validMove && targetPiece) {
@@ -731,20 +651,16 @@ function handlePointerMove(state, e) {
           
           // Check if this is a large gap moving into 2 small pieces
           if (clickedGap.isLarge && !targetPiece.isLarge) {
-            // We need to find the OTHER small piece that will move alongside targetPiece
-            // The logic should match what tryMove does for large gaps moving into 2 small pieces
-            
+            // Find the other small piece that will move alongside targetPiece
             // Calculate which 2 cells the large gap is looking at
             let destCells = [];
             if (tryMoveDir === 'left' || tryMoveDir === 'right') {
               // Horizontal: check for 2 vertically aligned cells
               if (tryMoveDir === 'right') {
-                // dir='right' means look LEFT (at x-1)
                 const cell1 = normalizeCoords(state, clickedGap.x - 1, clickedGap.y);
                 const cell2 = normalizeCoords(state, clickedGap.x - 1, clickedGap.y + 1);
                 destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
               } else {
-                // dir='left' means look RIGHT (at x+2)
                 const cell1 = normalizeCoords(state, clickedGap.x + 2, clickedGap.y);
                 const cell2 = normalizeCoords(state, clickedGap.x + 2, clickedGap.y + 1);
                 destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
@@ -752,12 +668,10 @@ function handlePointerMove(state, e) {
             } else if (tryMoveDir === 'up' || tryMoveDir === 'down') {
               // Vertical: check for 2 horizontally aligned cells
               if (tryMoveDir === 'down') {
-                // dir='down' means look ABOVE (at y-1)
                 const cell1 = normalizeCoords(state, clickedGap.x, clickedGap.y - 1);
                 const cell2 = normalizeCoords(state, clickedGap.x + 1, clickedGap.y - 1);
                 destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
               } else {
-                // dir='up' means look BELOW (at y+2)
                 const cell1 = normalizeCoords(state, clickedGap.x, clickedGap.y + 2);
                 const cell2 = normalizeCoords(state, clickedGap.x + 1, clickedGap.y + 2);
                 destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
@@ -773,7 +687,6 @@ function handlePointerMove(state, e) {
                 const piece1 = state.pieceById.get(dest1Cell.id);
                 const piece2 = state.pieceById.get(dest2Cell.id);
                 
-                // Add both pieces to preview (targetPiece should be one of them)
                 if (piece1 && piece2) {
                   piecesToPreview = [piece1, piece2];
                 }
@@ -806,7 +719,6 @@ function handlePointerMove(state, e) {
           
           swipePreviewActive = true;
           swipePreviewTile = targetPiece; // Keep reference to first piece for compatibility
-          swipePreviewOffset = { x: offsetX, y: offsetY };
         } else {
           // Clear preview if no valid target or gap swap
           if (swipePreviewActive) {
@@ -818,7 +730,6 @@ function handlePointerMove(state, e) {
             });
             swipePreviewActive = false;
             swipePreviewTile = null;
-            swipePreviewOffset = { x: 0, y: 0 };
           }
         }
         return;
@@ -830,47 +741,12 @@ function handlePointerMove(state, e) {
 
       const cellsToCheck = getCellsForTile(state, piece, clickedCell, gridX, gridY);
       
-      // Check if move would be valid
-      let validSwipe = false;
+      // Check if any gap is in the swipe direction
+      const gapPieces = state.pieces.filter(p => p.isGap);
+      const gapInDirection = gapPieces.find(gap => isGapInSwipeDirection(state, cellsToCheck, gap, swipeDir));
       
-      if (!piece.isLarge) {
-        // For small pieces, just check if any gap is in swipe direction
-        const gapPieces = state.pieces.filter(p => p.isGap);
-        validSwipe = gapPieces.some(gap => isGapInSwipeDirection(state, cellsToCheck, gap, swipeDir));
-      } else {
-        // For big pieces, need to verify destination is valid (2 small gaps or 1 large gap)
-        // Calculate destination cells based on swipe direction
-        let dx = 0, dy = 0;
-        if (swipeDir === 'right') dx = 1;
-        else if (swipeDir === 'left') dx = -1;
-        else if (swipeDir === 'down') dy = 1;
-        else if (swipeDir === 'up') dy = -1;
-        
-        // Use helper function to calculate destination cells
-        const result = state.calculateLargePieceDestination(piece, dx, dy);
-        const destCells = result ? result.destCells : [];
-        
-        // Check if destination is valid (2 small gaps OR 1 large gap)
-        if (destCells.length === 2) {
-          // Check for large gap
-          const destCell = state.grid[destCells[0].y]?.[destCells[0].x];
-          if (destCell?.isGap && destCell?.isLarge) {
-            const largeGap = state.pieceById.get(destCell.id);
-            const allSameGap = destCells.every(d => {
-              const cell = state.grid[d.y]?.[d.x];
-              return cell?.isGap && cell?.isLarge && cell.id === largeGap.id;
-            });
-            validSwipe = allSameGap;
-          } else {
-            // Check for 2 small gaps
-            const destAreSmallGaps = destCells.every(d => {
-              const cell = state.grid[d.y]?.[d.x];
-              return cell?.isGap && !cell?.isLarge;
-            });
-            validSwipe = destAreSmallGaps;
-          }
-        }
-      }
+      // If there's a gap in the swipe direction, validate the move with tryMove
+      const validSwipe = gapInDirection ? tryMove(state, swipeDir, gapInDirection, null, true) : false;
 
       if (validSwipe) {
         const previewOffset = 15;
@@ -886,7 +762,6 @@ function handlePointerMove(state, e) {
           swipePreviewTile = piece;
         }
 
-        swipePreviewOffset = { x: offsetX, y: offsetY };
         piece.el.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
       } else {
         // Clear preview if swipe is invalid
@@ -899,7 +774,6 @@ function handlePointerMove(state, e) {
           });
           swipePreviewActive = false;
           swipePreviewTile = null;
-          swipePreviewOffset = { x: 0, y: 0 };
         }
       }
     } else {
@@ -913,7 +787,6 @@ function handlePointerMove(state, e) {
         });
         swipePreviewActive = false;
         swipePreviewTile = null;
-        swipePreviewOffset = { x: 0, y: 0 };
       }
     }
   }
@@ -953,7 +826,6 @@ function handlePointerEnd(state, e) {
     });
     swipePreviewActive = false;
     swipePreviewTile = null;
-    swipePreviewOffset = { x: 0, y: 0 };
   }
 
   // If drag control was used, skip all click/swipe logic
@@ -1031,100 +903,48 @@ function handlePointerEnd(state, e) {
       };
       const tryMoveDir = reverseDir[swipeDir];
       
-      // Check if move would be valid by examining what tryMove would do
-      // We need to replicate the logic from tryMove to determine what piece would move
-      let fromX = clickedGap.x, fromY = clickedGap.y;
-      if (clickedGap.isLarge) {
-        // Large gap: look beyond the 2x2 extent
-        if (tryMoveDir === 'up') fromY = clickedGap.y + 2;
-        if (tryMoveDir === 'down') fromY = clickedGap.y - 1;
-        if (tryMoveDir === 'left') fromX = clickedGap.x + 2;
-        if (tryMoveDir === 'right') fromX = clickedGap.x - 1;
-      } else {
-        // Small gap: normal offset
-        if (tryMoveDir === 'up') fromY = clickedGap.y + 1;
-        if (tryMoveDir === 'down') fromY = clickedGap.y - 1;
-        if (tryMoveDir === 'left') fromX = clickedGap.x + 1;
-        if (tryMoveDir === 'right') fromX = clickedGap.x - 1;
-      }
-      
-      // Apply wrapping to source coordinates
-      const wrappedFrom = normalizeCoords(state, fromX, fromY);
-      fromX = wrappedFrom.x;
-      fromY = wrappedFrom.y;
-      
-      // Check bounds and validate move
-      if (state.wrapHorizontal || state.wrapVertical || (fromX >= 0 && fromX < state.boardConfig.width && fromY >= 0 && fromY < state.boardConfig.height)) {
-        const sourceCell = state.grid[fromY]?.[fromX];
-        if (sourceCell) {
-          // Valid move found - execute it
-          tryMove(state, tryMoveDir);
-          return;
-        }
-      }
-      
-      // No valid move found - do nothing
+      // Execute move (tryMove will validate internally)
+      tryMove(state, tryMoveDir, clickedGap);
       return;
     }
     
     // No swipe detected - handle click behavior only if mouse didn't move
     if (!mouseMoved && wasAlreadySelected) {
-      // Gap was already selected - only swap if exactly one gap is adjacent (unambiguous)
-      // Count how many gaps are adjacent to this gap (including wrapped adjacency)
-      const adjacentGaps = gapPieces.filter(g => {
-        if (g === clickedGap) return false; // Skip self
-        const dx = g.x - gridX;
-        const dy = g.y - gridY;
-        
-        // Check direct adjacency
-        if ((Math.abs(dx) === 1 && dy === 0) || (dx === 0 && Math.abs(dy) === 1)) {
-          return true;
-        }
-        
-        // Check wrapped adjacency if wrapping is enabled
-        if (state.wrapHorizontal) {
-          // Check if gap wraps around horizontally
-          if (gridX === state.boardConfig.width - 1 && g.x === 0 && dy === 0) return true; // Gap at left edge, clicked gap at right edge
-          if (gridX === 0 && g.x === state.boardConfig.width - 1 && dy === 0) return true; // Gap at right edge, clicked gap at left edge
-        }
-        
-        if (state.wrapVertical) {
-          // Check if gap wraps around vertically
-          if (gridY === state.boardConfig.height - 1 && g.y === 0 && dx === 0) return true; // Gap at top edge, clicked gap at bottom edge
-          if (gridY === 0 && g.y === state.boardConfig.height - 1 && dx === 0) return true; // Gap at bottom edge, clicked gap at top edge
-        }
-        
-        return false;
-      });
+      // Gap was already selected - check for gap swap moves only
+      const directions = ['up', 'down', 'left', 'right'];
+      const gapSwapMoves = [];
       
-      // Only swap if exactly one gap is adjacent (unambiguous)
-      if (adjacentGaps.length === 1) {
-        const otherGap = adjacentGaps[0];
-        let dx = otherGap.x - gridX;
-        let dy = otherGap.y - gridY;
-        
-        // Adjust dx/dy for wrapped adjacency
-        if (state.wrapHorizontal) {
-          if (gridX === state.boardConfig.width - 1 && otherGap.x === 0) dx = 1; // Wrapped right
-          if (gridX === 0 && otherGap.x === state.boardConfig.width - 1) dx = -1; // Wrapped left
-        }
-        if (state.wrapVertical) {
-          if (gridY === state.boardConfig.height - 1 && otherGap.y === 0) dy = 1; // Wrapped down
-          if (gridY === 0 && otherGap.y === state.boardConfig.height - 1) dy = -1; // Wrapped up
-        }
-        
-        // Determine swap direction (tryMove direction is OPPOSITE of where the gap is)
-        let gapSwapDir = null;
-        if (dx === 1 && dy === 0) gapSwapDir = 'left';   // other gap is right, so move from left
-        if (dx === -1 && dy === 0) gapSwapDir = 'right';  // other gap is left, so move from right
-        if (dx === 0 && dy === 1) gapSwapDir = 'up';      // other gap is down, so move from up
-        if (dx === 0 && dy === -1) gapSwapDir = 'down';   // other gap is up, so move from down
-        
-        if (gapSwapDir) {
-          tryMove(state, gapSwapDir);
+      for (const dir of directions) {
+        if (tryMove(state, dir, clickedGap, null, true)) {
+          // Check if this move would be a gap swap by examining the source cell
+          let fromX = clickedGap.x, fromY = clickedGap.y;
+          if (clickedGap.isLarge) {
+            if (dir === 'up') fromY = clickedGap.y + 2;
+            if (dir === 'down') fromY = clickedGap.y - 1;
+            if (dir === 'left') fromX = clickedGap.x + 2;
+            if (dir === 'right') fromX = clickedGap.x - 1;
+          } else {
+            if (dir === 'up') fromY = clickedGap.y + 1;
+            if (dir === 'down') fromY = clickedGap.y - 1;
+            if (dir === 'left') fromX = clickedGap.x + 1;
+            if (dir === 'right') fromX = clickedGap.x - 1;
+          }
+          
+          const wrappedFrom = normalizeCoords(state, fromX, fromY);
+          const sourceCell = state.grid[wrappedFrom.y]?.[wrappedFrom.x];
+          
+          // Only count this as a gap swap move if source is another gap
+          if (sourceCell?.isGap) {
+            gapSwapMoves.push(dir);
+          }
         }
       }
-      // If 0 or 2+ adjacent gaps, do nothing (ambiguous or impossible)
+      
+      // Only swap if exactly one gap swap move (unambiguous)
+      if (gapSwapMoves.length === 1) {
+        tryMove(state, gapSwapMoves[0], clickedGap);
+      }
+      // If 0 or 2+ gap swap moves, do nothing (ambiguous or impossible)
       return;
     } else if (!mouseMoved) {
       // Gap was not selected - just select it (only if mouse didn't move)
@@ -1200,7 +1020,7 @@ function handlePointerEnd(state, e) {
   targetGap.selected = true;
   const dir = vectorToDirection(targetDx, targetDy, false);
   if (dir) {
-    tryMove(state, dir);
+    tryMove(state, dir, null);
   }
 }
 
@@ -1227,6 +1047,25 @@ function handleKeyDown(state, e) {
     }
     return;
   }
+  
+  // Debug: Print valid moves when 'm' key is pressed
+  if (e.key === 'm' || e.key === 'M') {
+    e.preventDefault();
+    const gapPieces = state.pieces.filter(p => p.isGap);
+    const validMoves = enumerateValidMoves(state, gapPieces);
+    
+    console.log(`Total valid moves: ${validMoves.length}`);
+    
+    validMoves.forEach((move, index) => {
+      const gapInfo = move.gap.isLarge ? 'Large Gap' : 'Small Gap';
+      const gapPos = `(${move.gap.x}, ${move.gap.y})`;
+      const moveType = move.isGapSwap ? 'Gap Swap' : (move.isBig ? 'Big Piece' : 'Small Piece');
+      
+      console.log(`${index + 1}. ${gapInfo} at ${gapPos} -> Direction: ${move.dir} -> Type: ${moveType}`);
+    });
+    return;
+  }
+  
   const keyMap = {
     ArrowUp: 'up',
     ArrowDown: 'down',
@@ -1237,7 +1076,7 @@ function handleKeyDown(state, e) {
   const dir = keyMap[e.key];
   if (dir) {
     e.preventDefault();
-    tryMove(state, dir);
+    tryMove(state, dir, null);
   }
 }
 
@@ -1292,7 +1131,6 @@ export function initializeInputHandlers(getStateFn) {
       });
       swipePreviewActive = false;
       swipePreviewTile = null;
-      swipePreviewOffset = { x: 0, y: 0 };
     }
     
     mouseDownPos = null;

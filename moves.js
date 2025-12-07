@@ -103,15 +103,17 @@ export function calculateLargePieceDestination(state, piece, dx, dy) {
 }
 
 /**
- * Main movement function - attempts to move a piece into the selected gap
+ * Main movement function - attempts to move a piece into a gap
  * @param {Object} state - Game state object
  * @param {string} dir - Direction ('up'|'down'|'left'|'right')
+ * @param {Object} gap - Optional gap to use for the move (if not provided, uses selected gap)
  * @param {Array} cachedGapPieces - Optional cached array of gap pieces
- * @returns {boolean} True if move was successful
+ * @param {boolean} dryRun - If true, only validate the move without executing it
+ * @returns {boolean} True if move was successful (or would be successful in dry-run mode)
  */
-export function tryMove(state, dir, cachedGapPieces = null) {
+export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false) {
   // Prevent moves if challenge is solved or timer is paused
-  if (state.gameMode === 'challenge' && (state.challengeSolved || state.timerPaused)) {
+  if (state.gameMode === 'challenge' && !state.isShuffling && (state.challengeSolved || state.timerPaused)) {
     return false;
   }
   
@@ -125,8 +127,9 @@ export function tryMove(state, dir, cachedGapPieces = null) {
   // For gap swapping: To swap with a gap to the RIGHT, call tryMove('left')!
   // When implementing swipe/drag controls, always REVERSE the direction.
   
-  // Get selected gap
-  const selectedGap = state.pieces.find(p => p.isGap && p.selected);
+  // Get gap to use (either provided or selected)
+  const gapPieces = cachedGapPieces || state.pieces.filter(p => p.isGap);
+  const selectedGap = gap || gapPieces.find(p => p.selected);
   if (!selectedGap) return false;
   
   // dir: 'up'|'down'|'left'|'right'
@@ -172,6 +175,9 @@ export function tryMove(state, dir, cachedGapPieces = null) {
     
     // Check if both gaps are the same size (both small or both large)
     if (selectedGap.isLarge === otherGap.isLarge) {
+      // Valid move - return early if dry run
+      if (dryRun) return true;
+      
       // Swap positions
       [selectedGap.x, selectedGap.y, otherGap.x, otherGap.y] =
         [otherGap.x, otherGap.y, selectedGap.x, selectedGap.y];
@@ -343,6 +349,9 @@ export function tryMove(state, dir, cachedGapPieces = null) {
           }
           
           if (map.length === 2 && map[0].target && map[1].target) {
+            // Valid move - return early if dry run
+            if (dryRun) return true;
+            
             // Move the large gap in the direction it should actually move
             const oldGapX = selectedGap.x;
             const oldGapY = selectedGap.y;
@@ -473,6 +482,9 @@ export function tryMove(state, dir, cachedGapPieces = null) {
           );
           
           if (freedCells.length === 2) {
+            // Valid move - return early if dry run
+            if (dryRun) return true;
+            
             // Move both pieces
             movingPiece.x = piece1NewPos.x;
             movingPiece.y = piece1NewPos.y;
@@ -539,6 +551,9 @@ export function tryMove(state, dir, cachedGapPieces = null) {
       return false;
     }
     
+    // Valid move - return early if dry run
+    if (dryRun) return true;
+    
     // Move small piece into the selected small gap (with wrapping)
     const newPos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
     movingPiece.x = newPos.x;
@@ -583,6 +598,9 @@ export function tryMove(state, dir, cachedGapPieces = null) {
       });
       
       if (allSameGap) {
+        // Valid move - return early if dry run
+        if (dryRun) return true;
+        
         // Swap positions
         [movingPiece.x, movingPiece.y, largeGap.x, largeGap.y] =
           [largeGap.x, largeGap.y, movingPiece.x, movingPiece.y];
@@ -646,7 +664,6 @@ export function tryMove(state, dir, cachedGapPieces = null) {
     if (!(destAreSmallGaps && selectedIsDest)) return false;
 
     // Find which gaps are at destination cells
-    const gapPieces = cachedGapPieces || state.pieces.filter(p => p.isGap);
     const gapAt = (c) => gapPieces.find(g => g.x === c.x && g.y === c.y);
     
     const map = [];
@@ -669,6 +686,9 @@ export function tryMove(state, dir, cachedGapPieces = null) {
         map.push({ gap, target });
       }
     }
+    
+    // Valid move - return early if dry run
+    if (dryRun) return true;
     
     // Move the piece (with wrapping)
     const oldPieceX = movingPiece.x;
@@ -734,147 +754,38 @@ export function enumerateValidMoves(state, cachedGapPieces) {
   
   for (const gap of cachedGapPieces) {
     for (const dir of ['up','down','left','right']) {
-      let fromX = gap.x, fromY = gap.y;
-      // For large gaps, look beyond the 2x2 extent (same as in tryMove)
-      if (gap.isLarge) {
-        if (dir === 'up') fromY = gap.y + 2;
-        if (dir === 'down') fromY = gap.y - 1;
-        if (dir === 'left') fromX = gap.x + 2;
-        if (dir === 'right') fromX = gap.x - 1;
-      } else {
-        if (dir === 'up') fromY = gap.y + 1;
-        if (dir === 'down') fromY = gap.y - 1;
-        if (dir === 'left') fromX = gap.x + 1;
-        if (dir === 'right') fromX = gap.x - 1;
-      }
-      
-      // Check bounds before wrapping (skip if no wrapping and out of bounds)
-      if (!state.wrapHorizontal && (fromX < 0 || fromX >= state.boardConfig.width)) continue;
-      if (!state.wrapVertical && (fromY < 0 || fromY >= state.boardConfig.height)) continue;
-      
-      // Apply wrapping to coordinates
-      const wrappedFrom = normalizeCoords(state, fromX, fromY);
-      fromX = wrappedFrom.x;
-      fromY = wrappedFrom.y;
-      
-      const occ = state.grid[fromY][fromX];
-      if (!occ) continue;
-      
-      // Check if it's a gap swap (small or large)
-      const isGapSwap = occ.isGap;
-      
-      // For large gaps, we need special handling - don't add small piece moves here
-      // They will be handled in the dedicated large gap section below
-      if (!occ.isLarge && !occ.isGap && !gap.isLarge) {
-        // Small gap moving into small piece
-        moves.push({ gap, dir, isBig: false, isGapSwap: false });
-      } else if (occ.isLarge && !occ.isGap) {
-        const piece = state.pieceById.get(occ.id);
-        let dx = 0, dy = 0;
-        if (dir === 'up') dy = -1;
-        if (dir === 'down') dy = 1;
-        if (dir === 'left') dx = -1;
-        if (dir === 'right') dx = 1;
+      // Use tryMove in dry-run mode with explicit gap parameter
+      if (tryMove(state, dir, gap, cachedGapPieces, true)) {
+        // Determine metadata about the move type
+        let fromX = gap.x, fromY = gap.y;
         
-        // Use helper function to calculate destination cells
-        const result = calculateLargePieceDestination(state, piece, dx, dy);
-        if (!result) continue;
-        
-        const { destCells: dest } = result;
-        
-        // Check if destination is a large gap (for swap)
+        // Calculate source position (same logic as tryMove)
         if (gap.isLarge) {
-          const destCell = state.grid[dest[0].y]?.[dest[0].x];
-          if (destCell?.isGap && destCell?.isLarge) {
-            const largeGap = state.pieceById.get(destCell.id);
-            const allSameGap = dest.every(d => {
-              const cell = state.grid[d.y]?.[d.x];
-              return cell?.isGap && cell?.isLarge && cell.id === largeGap.id;
-            });
-            if (allSameGap) {
-              moves.push({ gap, dir, isBig: true, isGapSwap: false });
-              continue;
-            }
-          }
+          if (dir === 'up') fromY = gap.y + 2;
+          if (dir === 'down') fromY = gap.y - 1;
+          if (dir === 'left') fromX = gap.x + 2;
+          if (dir === 'right') fromX = gap.x - 1;
+        } else {
+          if (dir === 'up') fromY = gap.y + 1;
+          if (dir === 'down') fromY = gap.y - 1;
+          if (dir === 'left') fromX = gap.x + 1;
+          if (dir === 'right') fromX = gap.x - 1;
         }
         
-        // Check if destination is small gaps
-        const destAreSmallGaps = dest.every(d => {
-          const cell = state.grid[d.y]?.[d.x];
-          return cell?.isGap && !cell?.isLarge;
-        });
-        const selectedIsDest = dest.some(d => d.x === gap.x && d.y === gap.y);
-        if (destAreSmallGaps && selectedIsDest) {
-          moves.push({ gap, dir, isBig: true, isGapSwap: false });
-        }
-      } else if (isGapSwap) {
-        // Gap swap: only allow if both gaps are the same size
-        const otherGap = state.pieceById.get(occ.id);
-        if (gap.isLarge === otherGap.isLarge) {
-          moves.push({ gap, dir, isBig: false, isGapSwap: true });
-        }
-      } else if (gap.isLarge && !occ.isLarge) {
-        // Large gap moving into 2 aligned small pieces/gaps
-        let dx = 0, dy = 0;
-        if (dir === 'up') dy = 1;    // Gap moves down (pieces move up into gap)
-        if (dir === 'down') dy = -1; // Gap moves up
-        if (dir === 'left') dx = 1;  // Gap moves right
-        if (dir === 'right') dx = -1; // Gap moves left
+        // Apply wrapping to coordinates
+        const wrappedFrom = normalizeCoords(state, fromX, fromY);
+        fromX = wrappedFrom.x;
+        fromY = wrappedFrom.y;
         
-        // Check if large gap can move in this direction (boundary check for 2×2)
-        if (!state.wrapHorizontal) {
-          if (dx === 1 && gap.x + 2 >= state.boardConfig.width) continue;
-          if (dx === -1 && gap.x - 1 < 0) continue;
-        }
-        if (!state.wrapVertical) {
-          if (dy === 1 && gap.y + 2 >= state.boardConfig.height) continue;
-          if (dy === -1 && gap.y - 1 < 0) continue;
-        }
+        // Determine move metadata
+        const sourceCell = state.grid[fromY]?.[fromX];
+        const isBig = sourceCell?.isLarge && !sourceCell?.isGap;
+        const isGapSwap = sourceCell?.isGap;
         
-        // Calculate which cells to check for pieces that would move into the gap
-        // This matches the logic in tryMove for large gaps
-        let destCells = [];
-        if (dir === 'left' || dir === 'right') {
-          // Horizontal: check for 2 vertically aligned cells
-          if (dir === 'right') {
-            // dir='right' means look LEFT (at x-1)
-            const cell1 = normalizeCoords(state, gap.x - 1, gap.y);
-            const cell2 = normalizeCoords(state, gap.x - 1, gap.y + 1);
-            destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          } else {
-            // dir='left' means look RIGHT (at x+2)
-            const cell1 = normalizeCoords(state, gap.x + 2, gap.y);
-            const cell2 = normalizeCoords(state, gap.x + 2, gap.y + 1);
-            destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          }
-        } else if (dir === 'up' || dir === 'down') {
-          // Vertical: check for 2 horizontally aligned cells
-          if (dir === 'down') {
-            // dir='down' means look ABOVE (at y-1)
-            const cell1 = normalizeCoords(state, gap.x, gap.y - 1);
-            const cell2 = normalizeCoords(state, gap.x + 1, gap.y - 1);
-            destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          } else {
-            // dir='up' means look BELOW (at y+2)
-            const cell1 = normalizeCoords(state, gap.x, gap.y + 2);
-            const cell2 = normalizeCoords(state, gap.x + 1, gap.y + 2);
-            destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          }
-        }
-        
-        // Verify both destination cells exist and are small pieces or small gaps (not large pieces/gaps)
-        if (destCells.length === 2) {
-          const dest1Cell = state.grid[destCells[0].y]?.[destCells[0].x];
-          const dest2Cell = state.grid[destCells[1].y]?.[destCells[1].x];
-          
-          if (dest1Cell && dest2Cell &&
-              !dest1Cell.isLarge &&
-              !dest2Cell.isLarge) {
-            moves.push({ gap, dir, isBig: false, isGapSwap: false });
-          }
-        }
+        moves.push({ gap, dir, isBig, isGapSwap });
       }
     }
   }
+  
   return moves;
 }

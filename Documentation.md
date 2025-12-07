@@ -536,7 +536,7 @@ The codebase uses ES6 modules for better organization and maintainability:
 - `normalizeCoords(state, x, y)` - Coordinate wrapping
 - `isValidCoord(state, x, y)` - Boundary validation
 - `calculateLargePieceDestination(state, piece, dx, dy)` - Large piece movement helper
-- `tryMove(state, dir, cachedGapPieces)` - Main movement function
+- `tryMove(state, dir, gap, cachedGapPieces, dryRun)` - Main movement function
 - `enumerateValidMoves(state, cachedGapPieces)` - Valid move enumeration
 - All movement validation and grid update logic
 
@@ -807,6 +807,25 @@ All pieces (including gaps) share the same structure:
   - **Eliminates duplicate code**: Used by both `tryMove()` and `enumerateValidMoves()`
   - Reduces ~80 lines of duplicate logic between the two functions
 
+- **Code Refactoring - Dry Run Mode & Gap Parameter**: The `tryMove()` function now supports additional parameters to eliminate validation logic duplication:
+  - `tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false, gap = null)`: Added optional `dryRun` and `gap` parameters
+  - **`dryRun` parameter**:
+    - When `true`: Validates the move without executing it (returns `true`/`false`)
+    - When `false`: Normal behavior - validates AND executes the move
+  - **`gap` parameter**:
+    - When provided: Uses the specified gap for the move
+    - When `null`: Uses the currently selected gap (default behavior)
+    - Simplifies `enumerateValidMoves()` by avoiding temporary selection changes
+  - **Benefits**:
+    - Single source of truth for all move validation logic
+    - `enumerateValidMoves()` now uses `tryMove()` with `dryRun=true` and explicit gap parameter
+    - Eliminates ~150 lines of duplicate validation code
+    - No need to temporarily modify gap selection state
+    - Changes to move rules only need to be made in one place
+    - Easier to maintain and less prone to bugs
+  - **Implementation**: Early returns added after each validation path when `dryRun=true`
+  - **Backward compatible**: Existing calls continue to work without changes (both parameters default appropriately)
+
 #### Board Management (puzzle.js)
 
 - `switchBoard(boardSlug)`: Switches to a different board configuration
@@ -883,7 +902,16 @@ All pieces (including gaps) share the same structure:
 
 #### Movement Logic (moves.js)
 
-- `tryMove(state, dir, cachedGapPieces)`: Main movement function
+- `tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)`: Main movement function with optional dry-run mode and gap parameter
+  - **New Parameters**:
+    - `dryRun` (optional, defaults to `false`):
+      - When `false`: Normal behavior - validates and executes moves
+      - When `true`: Only validates moves without modifying state
+      - Used by `enumerateValidMoves()` to check move validity
+    - `gap` (optional):
+      - When provided: Uses the specified gap for the move
+      - When `null`: Uses the currently selected gap
+      - Allows validation without modifying selection state
   - **CRITICAL**: The `dir` parameter is counterintuitive - it specifies where to look for something to move INTO the gap, NOT the direction of movement
     - `tryMove('right')` looks at `g.x - 1` (to the LEFT of the gap)
     - `tryMove('left')` looks at `g.x + 1` (to the RIGHT of the gap)
@@ -925,20 +953,19 @@ All pieces (including gaps) share the same structure:
   - Returns true on success, false if move is invalid
 
 - `enumerateValidMoves(state, cachedGapPieces)`: Returns all legal moves for current state
-  - Filters gap pieces from `pieces` array (includes both small and large gaps)
-  - Iterates through each gap and all four directions
-  - **IMPORTANT FOR LARGE GAPS**: Uses same extended lookup logic as `tryMove()`
-    - For large gaps: looks beyond the 2×2 extent to avoid finding the gap itself
-    - For small gaps: uses standard offset
-  - Checks validity of each potential move
-  - **Uses `calculateLargePieceDestination()` helper** to eliminate duplicate code
-  - **Large Gap Support**:
-    - Recognizes large gaps via `isGap` and `isLarge` flags in source cells
-    - Checks for large gap destinations when moving large pieces
-    - Enforces same-size gap swapping (small↔small, large↔large)
-  - Returns moves with gap piece reference instead of index
-  - Tags each move with metadata: `gap` (gap piece object), `isBig`, `isGapSwap`
+  - **Refactored to use `tryMove()` with `dryRun=true` and explicit gap parameter** - eliminates duplicate validation logic
+  - Iterates through each gap and tests all four directions
+  - Uses `tryMove(state, dir, gap, cachedGapPieces, true)` to validate each potential move
+  - Determines move metadata after validation:
+    - Calculates source position using same logic as `tryMove()`
+    - Checks source cell to determine `isBig` and `isGapSwap` flags
+  - Returns moves with gap piece reference and metadata: `gap`, `isBig`, `isGapSwap`
   - Used by `shuffle()` function
+  - **Benefits of refactoring**:
+    - No duplicate validation code (~150 lines eliminated)
+    - No temporary selection state changes needed
+    - Guaranteed consistency with `tryMove()` behavior
+    - Changes to move rules automatically apply to both functions
 
 #### Shuffling (shuffle.js)
 
@@ -1624,7 +1651,7 @@ The `performGapRandomization(state, randomInt)` function converts pieces to/from
 - Simpler and more efficient than old system
 
 ### Large Piece Movement Algorithm (moves.js)
-In `tryMove(state, dir, cachedGapPieces)` for large pieces (checked via `movingPiece.isLarge`):
+In `tryMove(state, dir, gap, cachedGapPieces, dryRun)` for large pieces (checked via `movingPiece.isLarge`):
 1. Use `calculateLargePieceDestination()` helper to get destination and freed cells
 2. Verify both destination cells are gaps
 3. Verify selected gap is one of the destination cells

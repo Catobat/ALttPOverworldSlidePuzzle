@@ -376,7 +376,7 @@ export async function shuffle(state, steps, seed = null, randomizeGaps = false) 
       state.pieces.forEach(p => p.selected = false);
       m.gap.selected = true;
       
-      tryMove(state, m.dir, cachedGapPieces);
+      tryMove(state, m.dir, m.gap, cachedGapPieces);
       lastMove = m; // Remember this move for next iteration
       
       // Update urgency tracker
