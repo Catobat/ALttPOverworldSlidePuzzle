@@ -13,16 +13,33 @@ This file contains specific rules and guidelines for AI coding assistants workin
 
 ## Project-Specific Rules
 
-### Three-File Architecture
-This project uses a strict three-file structure:
-- [`index.html`](index.html) - Structure only
-- [`puzzle.css`](puzzle.css) - Styling only  
-- [`puzzle.js`](puzzle.js) - Logic only
+### Modular Architecture
+This project uses a modular ES6 architecture with separation of concerns:
+
+**HTML & CSS:**
+- [`index.html`](index.html) - Structure only (loads [`puzzle.js`](puzzle.js) as ES6 module)
+- [`puzzle.css`](puzzle.css) - Styling only
+
+**JavaScript Modules:**
+- [`puzzle.js`](puzzle.js) - Core game logic, state management, UI handlers (main entry point)
+- [`moves.js`](moves.js) - Movement logic and validation
+- [`input.js`](input.js) - Input handling (mouse, touch, keyboard)
+- [`shuffle.js`](shuffle.js) - Shuffle algorithm and quality scoring
+- [`render.js`](render.js) - DOM rendering and visual updates
 
 **MAINTAIN** this separation when making changes:
 - Don't add inline styles to HTML
 - Don't add inline scripts to HTML
-- Don't mix concerns between files
+- Keep movement logic in [`moves.js`](moves.js)
+- Keep input handling in [`input.js`](input.js)
+- Keep rendering logic in [`render.js`](render.js)
+- Keep shuffle algorithm in [`shuffle.js`](shuffle.js)
+- Core logic and coordination stays in [`puzzle.js`](puzzle.js)
+
+**State Management:**
+- Modules receive state via a `getState()` function that returns current state
+- This ensures modules always work with up-to-date references when boards are switched
+- Never store state object references at module level - always get fresh state when needed
 
 ### Documentation Updates
 - **ALWAYS** update [`Documentation.md`](Documentation.md) after adding new functionality or making significant changes

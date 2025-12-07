@@ -126,8 +126,8 @@ Large gaps are 2×2 gaps that function similarly to large pieces but act as empt
 - **Flags**:
   - `isGap: true` - Identifies as a gap
   - `isLarge: true` - Identifies as a 2×2 entity
-- **Grid Representation**: Occupies 4 cells with `{type:'biggap', id, ox, oy}`
-- **Note**: Pieces no longer store a `type` property; grid cell type strings are derived from `isGap` and `isLarge` flags using `getGridCellType()`
+- **Grid Representation**: Occupies 4 cells with `{isGap: true, isLarge: true, id, ox, oy}`
+- **Note**: Pieces no longer store a `type` property; grid cells use `isGap` and `isLarge` flags directly
 
 #### DOM Structure
 Large gaps use a nested structure for proper styling and selection:
@@ -498,11 +498,116 @@ Large gaps (2×2) introduce new movement possibilities while maintaining the con
 ### File Structure
 ```
 index.html          # Main HTML structure and page layout
-puzzle.css           # All styling (tiles, gaps, animations)
-puzzle.js            # Game logic and event handling
-lightworld.png       # Puzzle image (8×8 tile grid)
-.clinerules          # This AI instructions file
+puzzle.css          # All styling (tiles, gaps, animations)
+puzzle.js           # Core game logic, state management, and UI handlers (ES6 module)
+moves.js            # Movement logic and validation (ES6 module)
+input.js            # Input handling - mouse, touch, keyboard (ES6 module)
+shuffle.js          # Shuffle algorithm and quality scoring (ES6 module)
+render.js           # DOM rendering and visual updates (ES6 module)
+lightworld.png      # Puzzle image (8×8 tile grid)
+darkworld.png       # Secondary puzzle image (for horizontal/vertical boards)
+AGENTS.md           # AI agent rules and guidelines
+Documentation.md    # This technical documentation file
+README.md           # Player-facing documentation
 ```
+
+### Module Organization
+
+The codebase uses ES6 modules for better organization and maintainability:
+
+**[`puzzle.js`](puzzle.js)** - Main entry point and core logic (~1568 lines)
+- Board configurations and registry
+- State management (pieces, grid, game mode, timers)
+- Initialization functions (`initTiles()`, `buildGridFromState()`, `resetState()`)
+- Helper functions (`createPiece()`, `getBackgroundImageForPosition()`, `getBackgroundStyleForTile()`, `getBackgroundPositionCalc()`)
+- Board management (`switchBoard()`)
+- Game mode management (`startChallenge()`, `switchToFreePlay()`, `updateUIForMode()`)
+- Timer functions (`startTimer()`, `pauseTimer()`, `resumeTimer()`, `stopTimer()`, `freezeTimer()`, `updateTimer()`, `formatTime()`)
+- Challenge management (`checkWinCondition()`, `handleWin()`, `updateMoveCount()`, `updateURL()`, `checkURLParams()`)
+- Gap randomization (`resetGapIdentities()`, `randomizeGapIdentities()`)
+- Wrapping helper (`hasWrappedLargePieces()`)
+- Display settings (`applyBoardSize()`, `updateAutoFitScale()`)
+- UI event handlers (buttons, dialogs, settings)
+- State object factory (`getState()`)
+- Wrapper functions for modules (`renderAll()`, `shuffle()`)
+- Imports from other modules and provides state via `getState()` function
+
+**[`moves.js`](moves.js)** - Movement logic (~880 lines)
+- `normalizeCoords(state, x, y)` - Coordinate wrapping
+- `isValidCoord(state, x, y)` - Boundary validation
+- `calculateLargePieceDestination(state, piece, dx, dy)` - Large piece movement helper
+- `tryMove(state, dir, cachedGapPieces)` - Main movement function
+- `enumerateValidMoves(state, cachedGapPieces)` - Valid move enumeration
+- All movement validation and grid update logic
+
+**[`input.js`](input.js)** - Input handling (~1324 lines)
+- `initializeInputHandlers(getStateFn)` - Sets up all event listeners
+- Keyboard controls (spacebar, arrow keys, WASD)
+- Mouse controls (click, swipe, drag)
+- Touch controls (touchstart, touchmove, touchend)
+- Shared utility functions:
+  - `getCellsForTile(state, tile, clickedCell, gridX, gridY)` - Cell enumeration
+  - `findAdjacentGaps(state, cells)` - Adjacency detection
+  - `vectorToDirection(dx, dy, invert)` - Direction conversion
+  - `isInValidDragRegion(mouseX, mouseY, sourceDx, sourceDy, tilePx)` - Drag region validation
+  - `detectSwipeDirection(startPos, currentPos, threshold)` - Swipe detection
+  - `isGapInSwipeDirection(state, cells, gap, swipeDir)` - Swipe validation
+- Event handlers:
+  - `handlePointerStart(state, e)` - Pointer down handler
+  - `handlePointerMove(state, e)` - Pointer move handler
+  - `handlePointerEnd(state, e)` - Pointer up handler
+  - `handleKeyDown(state, e)` - Keyboard handler
+- Returns cleanup function for removing event listeners
+
+**[`shuffle.js`](shuffle.js)** - Shuffle algorithm (~119 lines)
+- `shuffle(state, steps, seed, randomizeGaps)` - Main shuffle function
+- `performGapRandomization(state, randomInt)` - Gap randomization logic
+- `gapDistance(state, gap1, gap2)` - Manhattan distance calculation
+- `calculateDistanceWeight(state, move, urgency, gapPieces)` - Move weighting
+- `calculateShuffleScore(state)` - Quality scoring
+- Hybrid weighting system with adaptive urgency
+
+**[`render.js`](render.js)** - Rendering logic (~446 lines)
+- `renderAll(state)` - Updates all piece positions in DOM
+- `updatePieceDOMForGapChanges(state)` - Updates DOM for gap/tile conversions
+- Helper functions:
+  - `getBackgroundStyleForTile(state, homeX, homeY)` - Background style calculation
+  - `getBackgroundPositionCalc(state, homeX, homeY)` - Background position calculation
+- Handles wrapped large pieces (splits into segments when spanning edges)
+- Manages selection highlighting for gaps
+- Background image positioning for multi-image boards
+
+### State Object Pattern
+
+Modules receive a state object containing all necessary data and functions:
+```javascript
+const state = {
+  // Configuration
+  boardConfig, tilePx, baseTilePx, currentBoardSlug,
+  
+  // Data structures
+  pieces, pieceById, grid,
+  
+  // Flags
+  wrapHorizontal, wrapVertical, gameMode, challengeSolved, timerPaused, isShuffling,
+  
+  // Counters
+  challengeMoveCount,
+  
+  // DOM elements
+  boardEl,
+  
+  // Functions
+  renderAll, checkWinCondition, handleWin, updateMoveCount, buildGridFromState,
+  calculateLargePieceDestination
+};
+```
+
+This pattern:
+- Avoids passing 15+ individual parameters
+- Makes dependencies explicit
+- Easier to test and maintain
+- Allows modules to access only what they need
 
 ### UI Layout
 
@@ -604,7 +709,7 @@ boardConfig          // Object defining board layout
 boardConfig          // Currently active board configuration object
 currentBoardSlug     // Current board slug ('default', 'horizontal', 'vertical')
 boardRegistry        // Map of board slugs to board configuration objects
-grid                 // 2D array: {type:'gap'|'small'|'big'|'biggap', id, ox, oy} for occupied cells, null for empty
+grid                 // 2D array: {isGap, isLarge, id, ox, oy} for occupied cells, null for empty
 pieces[]             // Unified array: {id, isGap, isLarge, x, y, homeX, homeY, el, innerEl, selected}
                      // - All game objects (small tiles, large tiles, gaps) in single array
                      // - isGap flag determines if piece acts as gap or regular piece
@@ -616,6 +721,7 @@ gameMode             // 'freeplay' or 'challenge'
 challengeSeed        // Seed used for current challenge (null in Free Play)
 challengeSteps       // Number of shuffle steps for challenge (null in Free Play)
 challengeBoard       // Board slug for current challenge (null in Free Play)
+challengeRandomizeGaps // Flag to randomize gap positions during shuffle (Challenge Mode)
 challengeMoveCount   // Player's move count in Challenge Mode
 isShuffling          // Flag to prevent move counting during shuffle
 challengeSolved      // Flag indicating if challenge is completed
@@ -628,14 +734,17 @@ wrapHorizontal       // Boolean flag for horizontal wrapping in Free Play mode
 wrapVertical         // Boolean flag for vertical wrapping in Free Play mode
 challengeWrapHorizontal  // Boolean flag for horizontal wrapping in Challenge mode
 challengeWrapVertical    // Boolean flag for vertical wrapping in Challenge mode
+autoFitEnabled       // Boolean flag for auto-scale mode
+boardSizeScale       // Board size percentage (50-200%) for manual scaling
+challengeAbove       // Boolean flag for challenge box position (false=right, true=above)
 ```
 
 #### Grid Cell Format
 - `null`: Empty cell (unused)
-- `{type:'gap', id}`: Small gap piece (1×1)
-- `{type:'biggap', id, ox, oy}`: Part of large gap (2×2, ox,oy = offset within 2×2)
-- `{type:'small', id}`: Small piece (1×1)
-- `{type:'big', id, ox, oy}`: Part of large piece (2×2, ox,oy = offset within 2×2)
+- `{isGap: true, isLarge: false, id}`: Small gap piece (1×1)
+- `{isGap: true, isLarge: true, id, ox, oy}`: Part of large gap (2×2, ox,oy = offset within 2×2)
+- `{isGap: false, isLarge: false, id}`: Small piece (1×1)
+- `{isGap: false, isLarge: true, id, ox, oy}`: Part of large piece (2×2, ox,oy = offset within 2×2)
 
 #### Piece Object Format
 All pieces (including gaps) share the same structure:
@@ -654,25 +763,12 @@ All pieces (including gaps) share the same structure:
 }
 ```
 
-**Note**: The `type` property has been removed. Grid cell type strings ('small', 'big', 'gap', 'biggap') are derived from `isGap` and `isLarge` flags using the `getGridCellType()` helper function.
+**Note**: The `type` property has been removed from piece objects. Grid cells now use `isGap` and `isLarge` flags directly instead of type strings.
 
 ### Core Functions
 
-#### Helper Functions
+#### Helper Functions (puzzle.js)
 
-- `getGridCellType(piece)`: Derives grid cell type string from piece properties
-  - Returns 'small', 'big', 'gap', or 'biggap' based on `isGap` and `isLarge` flags
-  - Used by `buildGridFromState()` to populate grid cells
-  - Eliminates need for storing redundant `type` property on pieces
-
-- `calculateLargePieceDestination(piece, dx, dy)`: Calculates destination and freed cells for large piece movement
-  - Takes a large piece and direction vector (dx, dy)
-  - Returns `{destCells: [{x,y}, {x,y}], freedCells: [{x,y}, {x,y}]}` or `null` if invalid
-  - Handles wrapping logic and boundary checking
-  - **Eliminates duplicate code**: Used by both `tryMove()` and `enumerateValidMoves()`
-  - Reduces ~80 lines of duplicate logic between the two functions
-
-#### Background Image Management
 - `getBackgroundImageForPosition(x, y)`: Determines which background image a tile should use
   - **Single mode**: Returns `boardConfig.images.primary` for all positions
   - **Horizontal mode**: Returns `primary` for left half (x < width/2), `secondary` for right half
@@ -681,18 +777,38 @@ All pieces (including gaps) share the same structure:
 
 - `getBackgroundStyleForTile(homeX, homeY)`: Calculates complete background styling for a tile
   - Returns object with `{image, bgSize, bgPosX, bgPosY}`
-  - **Single mode**:
-    - Background size covers full board dimensions
-    - Position offset by tile's home coordinates
-  - **Horizontal mode**:
-    - Background size covers half board width, full height
-    - Position adjusted for tiles in right half (subtracts halfWidth from X offset)
-  - **Vertical mode**:
-    - Background size covers full width, half board height
-    - Position adjusted for tiles in bottom half (subtracts halfHeight from Y offset)
+  - **Single mode**: Background size covers full board dimensions, position offset by tile's home coordinates
+  - **Horizontal mode**: Background size covers half board width and full height, position adjusted for tiles in right half
+  - **Vertical mode**: Background size covers full width and half board height, position adjusted for tiles in bottom half
   - Used by `initTiles()` and `resetState()` to set tile and gap backgrounds
 
-#### Board Management
+- `getBackgroundPositionCalc(homeX, homeY)`: Generates CSS calc() expressions for background positioning
+  - Returns calc() expressions that reference `var(--tile)`
+  - Backgrounds automatically adjust when `--tile` changes
+  - **Single mode**: Simple offset multiplication
+  - **Horizontal mode**: Adjusts X offset for right half tiles (subtracts halfWidth)
+  - **Vertical mode**: Adjusts Y offset for bottom half tiles (subtracts halfHeight)
+  - Used by `initTiles()` and `resetState()` to set tile/gap backgrounds
+
+- `createPiece(isGap, isLarge, id, x, y)`: Helper function to create any piece type uniformly
+  - Supports creating small pieces, large pieces, small gaps, and large gaps
+  - Creates appropriate DOM structure (`.tile` for pieces, `.gap-wrapper` + `.gap` for gaps)
+  - Sets `isGap` and `isLarge` flags based on parameters
+  - Sets background image and positioning using `getBackgroundStyleForTile()`
+  - Returns unified piece object with all required properties
+  - Used by `initTiles()` for consistent piece creation
+
+#### Helper Functions (moves.js)
+
+- `calculateLargePieceDestination(state, piece, dx, dy)`: Calculates destination and freed cells for large piece movement
+  - Takes a large piece and direction vector (dx, dy)
+  - Returns `{destCells: [{x,y}, {x,y}], freedCells: [{x,y}, {x,y}]}` or `null` if invalid
+  - Handles wrapping logic and boundary checking
+  - **Eliminates duplicate code**: Used by both `tryMove()` and `enumerateValidMoves()`
+  - Reduces ~80 lines of duplicate logic between the two functions
+
+#### Board Management (puzzle.js)
+
 - `switchBoard(boardSlug)`: Switches to a different board configuration
   - Validates board slug exists in registry
   - Updates `boardConfig` and `currentBoardSlug`
@@ -700,18 +816,7 @@ All pieces (including gaps) share the same structure:
   - Calls `resetState()` to rebuild puzzle with new board
   - Used by settings dialog and challenge mode
 
-#### Initialization
-- `createPiece(type, id, x, y)`: Helper function to create any piece type uniformly
-  - Supports types: `'small'`, `'big'`, `'gap'`, `'biggap'`
-  - Creates appropriate DOM structure:
-    - `.tile` for regular pieces
-    - `.gap-wrapper` + `.gap` for small gaps
-    - `.gap-wrapper.big` + `.gap.big` for large gaps
-  - Sets `isGap` flag for gap types (`'gap'` and `'biggap'`)
-  - Sets `isLarge` flag for 2×2 types (`'big'` and `'biggap'`)
-  - Sets background image and positioning using `getBackgroundStyleForTile()`
-  - Returns unified piece object with all required properties
-  - Used by `initTiles()` for consistent piece creation
+#### Initialization (puzzle.js)
 
 - `initTiles()`: Creates all piece DOM elements and data structures
   - Builds coverage mask for both large pieces and large gaps
@@ -726,19 +831,36 @@ All pieces (including gaps) share the same structure:
 - `buildGridFromState()`: Rebuilds grid array from current piece positions
   - Creates grid with dimensions `boardConfig.width` × `boardConfig.height`
   - Iterates through unified `pieces` array
-  - Uses `getGridCellType()` to derive type string from piece flags
-  - Uses `isLarge` flag to identify 2×2 entities (large pieces and large gaps)
+  - Uses `isGap` and `isLarge` flags directly (no type string conversion)
   - Places large pieces and large gaps (occupying 2×2 cells each with wrapping support)
   - Places small pieces and small gaps (occupying 1 cell each)
-  - Grid cells use `{type:'gap', id}` for small gaps and `{type:'biggap', id, ox, oy}` for large gaps
+  - Grid cells use `{isGap: true, isLarge: false, id}` for small gaps and `{isGap: true, isLarge: true, id, ox, oy}` for large gaps
 
 - `resetState()`: Resets to solved state
   - Removes existing piece DOM elements (`.tile` and `.gap-wrapper`)
   - Calls `initTiles()` to recreate all pieces
   - Calls `buildGridFromState()` and `renderAll()`
 
-#### Rendering
-- `renderAll()`: Updates all piece positions in DOM
+#### Gap Management (puzzle.js)
+
+- `resetGapIdentities()`: Resets gaps to their original board configuration positions
+  - Converts all current gaps to regular pieces
+  - Finds pieces with original gap identities (from `boardConfig.gapIdentities` and `boardConfig.largeGapIdentities`)
+  - Converts those pieces to gaps
+  - Maintains piece identities and positions (no movement)
+  - Rebuilds grid and updates DOM
+  - Used by "Reset Gaps" button in Settings dialog
+
+- `randomizeGapIdentities()`: Randomizes which cells act as gaps
+  - Uses unseeded random number generator
+  - Calls `performGapRandomization()` from shuffle.js
+  - Updates DOM to reflect new gap assignments
+  - Rebuilds grid and renders
+  - Used by "Randomize Gaps" button in Settings dialog
+
+#### Rendering (render.js)
+
+- `renderAll(state)`: Updates all piece positions in DOM
   - Iterates through unified `pieces` array
   - **Large Gap Rendering with Wrapping**:
     - Detects if large gap spans board edges (wrapping enabled)
@@ -753,11 +875,15 @@ All pieces (including gaps) share the same structure:
   - For gaps: toggles `.selected` class based on `piece.selected` flag
   - Hides selection highlighting when challenge is solved
 
-- `renderGaps()`: Backward compatibility wrapper
-  - Simply calls `renderAll()` for compatibility with existing code
+- `updatePieceDOMForGapChanges(state)`: Updates DOM elements to reflect current isGap flags
+  - Converts pieces between tiles and gaps based on their `isGap` property
+  - Creates new DOM elements with correct structure (tile vs gap-wrapper)
+  - Preserves piece identities and background styling
+  - Used after gap randomization to update visual representation
 
-#### Movement Logic
-- `tryMove(dir)`: Main movement function
+#### Movement Logic (moves.js)
+
+- `tryMove(state, dir, cachedGapPieces)`: Main movement function
   - **CRITICAL**: The `dir` parameter is counterintuitive - it specifies where to look for something to move INTO the gap, NOT the direction of movement
     - `tryMove('right')` looks at `g.x - 1` (to the LEFT of the gap)
     - `tryMove('left')` looks at `g.x + 1` (to the RIGHT of the gap)
@@ -798,7 +924,7 @@ All pieces (including gaps) share the same structure:
       - Sets new positions (8 cells total)
   - Returns true on success, false if move is invalid
 
-- `enumerateValidMoves()`: Returns all legal moves for current state
+- `enumerateValidMoves(state, cachedGapPieces)`: Returns all legal moves for current state
   - Filters gap pieces from `pieces` array (includes both small and large gaps)
   - Iterates through each gap and all four directions
   - **IMPORTANT FOR LARGE GAPS**: Uses same extended lookup logic as `tryMove()`
@@ -807,15 +933,16 @@ All pieces (including gaps) share the same structure:
   - Checks validity of each potential move
   - **Uses `calculateLargePieceDestination()` helper** to eliminate duplicate code
   - **Large Gap Support**:
-    - Recognizes `'biggap'` type in source cells
+    - Recognizes large gaps via `isGap` and `isLarge` flags in source cells
     - Checks for large gap destinations when moving large pieces
     - Enforces same-size gap swapping (small↔small, large↔large)
   - Returns moves with gap piece reference instead of index
   - Tags each move with metadata: `gap` (gap piece object), `isBig`, `isGapSwap`
   - Used by `shuffle()` function
 
-#### Shuffling
-- `shuffle(steps, seed)`: Performs intelligent random valid moves with weighted priorities
+#### Shuffling (shuffle.js)
+
+- `shuffle(state, steps, seed, randomizeGaps)`: Performs intelligent random valid moves with weighted priorities
   - Disables buttons during shuffle
   - Calls `enumerateValidMoves()` to get legal moves
   - **Anti-reversal logic**: Remembers last move and filters out immediate reversals unless no other options exist
@@ -830,8 +957,18 @@ All pieces (including gaps) share the same structure:
   - Re-enables buttons when complete
   - Default 250 moves provides good randomization with meaningful piece movements
 
-#### Challenge Management
-- `startChallenge(seed, steps, boardSlug)`: Initializes a new challenge
+- `performGapRandomization(state, randomInt)`: Randomizes which pieces act as gaps
+  - Separates small and large pieces
+  - Randomly selects which pieces should be gaps (maintaining count)
+  - Converts all pieces to regular pieces first
+  - Converts selected pieces to gaps
+  - Preserves all piece identities (homeX, homeY unchanged)
+  - First gap is automatically selected
+  - Used by shuffle when `randomizeGaps` flag is true
+
+#### Challenge Management (puzzle.js)
+
+- `startChallenge(seed, steps, boardSlug, randomizeGaps, wrapH, wrapV)`: Initializes a new challenge
   - Sets game mode to 'challenge'
   - Stores seed, steps, and board slug for reset functionality
   - Switches to specified board if different from current
@@ -840,6 +977,11 @@ All pieces (including gaps) share the same structure:
   - Updates URL with seed, steps, and board parameters
   - Resets to solved state then shuffles with seed (no animations)
   - Starts timer after shuffle completes
+- `updateUIForMode()`: Updates UI based on current mode
+  - Shows/hides appropriate buttons (Settings hidden in Challenge Mode)
+  - Updates button text
+  - Displays/hides challenge info
+
 - `switchToFreePlay()`: Returns to Free Play mode
   - Clears challenge data
   - Stops and resets timer
@@ -865,12 +1007,9 @@ All pieces (including gaps) share the same structure:
   - Removes gap highlighting
   - Waits for animation to complete
   - Shows congratulations dialog with move count and time
-- `updateUIForMode()`: Updates UI based on current mode
-  - Shows/hides appropriate buttons (Settings hidden in Challenge Mode)
-  - Updates button text
-  - Displays/hides challenge info
 
-#### Timer Functions
+#### Timer Functions (puzzle.js)
+
 - `startTimer()`: Starts the challenge timer
   - Resets elapsed time to 0
   - Sets start timestamp
@@ -909,17 +1048,18 @@ All pieces (including gaps) share the same structure:
   - Calls formatTime and updates display element
   - Skips display update when timer is hidden (continues tracking in background)
 
-#### Mouse Control Utilities
+#### Mouse Control Utilities (input.js)
+
 The mouse control system uses shared utility functions to eliminate code duplication between swipe and drag controls:
 
-- `getCellsForTile(piece, clickedCell, gridX, gridY)`: Returns array of cells to check for a piece
+- `getCellsForTile(state, tile, clickedCell, gridX, gridY)`: Returns array of cells to check for a piece
   - Small pieces (1×1): Returns single cell `[{x, y}]`
   - Large pieces (2×2): Returns all 4 normalized cells of the piece
   - Large gaps (2×2): Returns all 4 normalized cells of the gap
   - Handles wrapping by normalizing coordinates
   - Used by all control methods for consistent cell enumeration
 
-- `findAdjacentGaps(cells)`: Determines which gaps are adjacent to given cells
+- `findAdjacentGaps(state, cells)`: Determines which gaps are adjacent to given cells
   - Filters gap pieces from `pieces` array
   - Returns array of `{gap, dx, dy}` for each adjacent gap
   - **For large gaps**: Checks ALL 4 cells of the gap for adjacency, not just the top-left corner
@@ -934,7 +1074,7 @@ The mouse control system uses shared utility functions to eliminate code duplica
   - Handles the counterintuitive tryMove() direction semantics
   - Used by all control methods for consistent direction calculation
 
-- `isInValidDragRegion(mouseX, mouseY, sourceDx, sourceDy)`: Checks if mouse is in valid 75% drag region
+- `isInValidDragRegion(mouseX, mouseY, sourceDx, sourceDy, tilePx)`: Checks if mouse is in valid 75% drag region
   - Excludes the 1/4 edge closest to the source
   - Works for both piece→gap and gap→piece scenarios
   - Uses quarter-tile calculations for precise region detection
@@ -944,43 +1084,36 @@ The mouse control system uses shared utility functions to eliminate code duplica
   - Uses dominant axis to determine direction
   - Consistent swipe detection across all handlers
 
-- `isGapInSwipeDirection(cells, gap, swipeDir)`: Checks if gap is in swipe direction relative to cells
+- `isGapInSwipeDirection(state, cells, gap, swipeDir)`: Checks if gap is in swipe direction relative to cells
   - Iterates through cells checking gap position
   - Returns boolean for quick validation
   - Simplifies swipe validation logic
 
-#### Event Handling
-- **Keyboard Events**: Attached to `boardEl`
-  - Spacebar: Cycles through gap pieces, updating `piece.selected` flags (blocked when challenge solved)
-  - Arrow keys/WASD: Calls `tryMove()` with appropriate direction (blocked when challenge solved)
+#### Event Handling (input.js)
 
-- **Mouse Events**: Use shared utility functions for consistent behavior
-  - **Mousedown** (on `boardEl`): Records initial position, time, and grid cell
-  - **Mousemove** (on `boardEl`): Handles drag and swipe preview
-    - **Gap Drag Control**: Uses `getCellsForTile()`, `isInValidDragRegion()`, and `vectorToDirection()` with invert=true
-    - **Piece Drag Control**: Uses `getCellsForTile()`, `isInValidDragRegion()`, and `vectorToDirection()` with invert=false
-    - **Swipe Preview**: Uses `detectSwipeDirection()`, `getCellsForTile()`, and `isGapInSwipeDirection()`
-    - Applies 5px threshold for swipe detection
-    - Shows 15px visual preview offset during valid swipe
-    - Clears preview if swipe becomes invalid or drops below threshold
-  - **Mouseup** (on `document`): Completes click or swipe action
-    - Uses `detectSwipeDirection()` for swipe detection
-    - Uses `getCellsForTile()` for cell enumeration
-    - Uses `findAdjacentGaps()` for adjacency checking
-    - Uses `isGapInSwipeDirection()` for swipe validation
-    - Uses `vectorToDirection()` for direction calculation
-    - Clears swipe preview transform
-    - If swipe detected (≥5px), moves piece in swipe direction if gap exists
-    - If no swipe, uses click behavior (selected gap or only adjacent gap)
-  - **Clicking on gap**:
-    - First click on unselected gap: Selects the gap (sets `piece.selected = true`)
-    - Click on already-selected gap: Counts how many other gaps are adjacent
-      - If exactly 1 gap is adjacent: Swaps with that gap using `tryMove()`
-      - If 0 or 2+ gaps are adjacent: Does nothing (ambiguous or impossible)
-      - This prevents accidental swaps and ensures clear user intent
-    - All gap interactions blocked when challenge is solved
+- **Keyboard Events**: Handled by `handleKeyDown(state, e)`
+  - Spacebar: Cycles through gap pieces, updating `piece.selected` flags (blocked when challenge solved or paused)
+  - Arrow keys/WASD: Calls `tryMove()` with appropriate direction (blocked when challenge solved or paused)
 
-- **Button Events**:
+- **Mouse/Touch Events**: Unified handlers for both mouse and touch input
+  - `handlePointerStart(state, e)`: Records initial position, time, and grid cell
+    - Handles both mousedown and touchstart events
+    - Selects gap if clicked on gap
+    - Stores piece ID if clicked on piece (for drag control)
+  - `handlePointerMove(state, e)`: Handles drag and swipe preview
+    - Handles both mousemove and touchmove events
+    - **Gap Drag Control**: Drags gap over pieces to move them
+    - **Piece Drag Control**: Drags piece over gaps to move continuously
+    - **Swipe Preview**: 5px threshold, 15px visual offset
+    - Disables swipe preview after drag control is used
+  - `handlePointerEnd(state, e)`: Completes click or swipe action
+    - Handles both mouseup and touchend events
+    - Swipe detection (≥5px movement)
+    - Click behavior (no movement or <1.5px movement)
+    - Clears swipe preview
+  - `getEventPosition(e)`: Helper to extract position from mouse or touch event
+
+- **Button Events** (puzzle.js):
   - Reset button: Calls `resetState()` in Free Play or `startChallenge()` in Challenge Mode
   - Shuffle button: Calls `shuffle(250)` (Free Play only)
   - New Challenge button: Opens challenge dialog
@@ -1052,7 +1185,7 @@ Gaps show darkened version (brightness 0.5) of their default positions, maintain
 - Check `grid` array state (should match visual board)
 - Verify gap `piece.selected` flags match visual selection
 - Ensure large pieces maintain 2×2 coverage in grid
-- Validate gap cells use `{type:'gap', id}` in grid (not `null`)
+- Validate gap cells use `{isGap: true, isLarge: false, id}` in grid (not `null`)
 - Check that `pieceById` Map is properly populated with all pieces
 - Verify `pieces` array contains all game objects (small, big, and gaps)
 
@@ -1313,13 +1446,6 @@ boardSizeScale    // Number: manual board size percentage (50-200)
     - Calls `renderAll()` to reposition tiles
     - Temporarily disables transitions during resize (via `.no-transitions` class)
 
-- `getBackgroundPositionCalc(homeX, homeY)`: Generates CSS calc() expressions for background positioning
-  - Returns calc() expressions that reference `var(--tile)`
-  - Backgrounds automatically adjust when `--tile` changes
-  - **Single mode**: Simple offset multiplication
-  - **Horizontal mode**: Adjusts X offset for right half tiles (subtracts halfWidth)
-  - **Vertical mode**: Adjusts Y offset for bottom half tiles (subtracts halfHeight)
-  - Used by `initTiles()` and `resetState()` to set tile/gap backgrounds
 
 #### Integration Points (Auto-Fit Triggers)
 When auto-scale is enabled, `applyBoardSize()` is called in these scenarios:
@@ -1469,7 +1595,7 @@ All game objects (tiles and gaps) use the same data structure:
 - **Gap Flag**: `isGap` boolean determines if piece acts as gap or regular piece
 - **Large Flag**: `isLarge` boolean determines if piece is 2×2 (large piece or large gap)
 - **No Type Property**: Pieces no longer store a `type` property
-  - Grid cell type strings derived from flags using `getGridCellType()`
+  - Grid cells use `isGap` and `isLarge` flags directly
   - Single source of truth: behavior determined solely by `isGap` and `isLarge`
 - **Selection**: Gaps use `selected` boolean flag instead of separate index variable
 - **DOM Structure**:
@@ -1481,8 +1607,8 @@ All game objects (tiles and gaps) use the same data structure:
   - Requires updating DOM structure only (no `type` property to update)
   - Much simpler than creating/destroying objects
 
-### Gap Randomization System
-The `performGapRandomization()` function converts pieces to/from gaps:
+### Gap Randomization System (shuffle.js)
+The `performGapRandomization(state, randomInt)` function converts pieces to/from gaps:
 1. Filters small pieces (current gaps and small tiles)
 2. Randomly selects which pieces should be gaps
 3. Converts all to regular pieces first (toggle `isGap`, update DOM)
@@ -1497,8 +1623,8 @@ The `performGapRandomization()` function converts pieces to/from gaps:
 - **Maintains piece identities** - each piece keeps its original background crop
 - Simpler and more efficient than old system
 
-### Large Piece Movement Algorithm
-In `tryMove()` for large pieces (checked via `movingPiece.isLarge`):
+### Large Piece Movement Algorithm (moves.js)
+In `tryMove(state, dir, cachedGapPieces)` for large pieces (checked via `movingPiece.isLarge`):
 1. Use `calculateLargePieceDestination()` helper to get destination and freed cells
 2. Verify both destination cells are gaps
 3. Verify selected gap is one of the destination cells
@@ -1507,8 +1633,8 @@ In `tryMove()` for large pieces (checked via `movingPiece.isLarge`):
 
 **Code Reuse**: The `calculateLargePieceDestination()` helper eliminates ~80 lines of duplicate code between `tryMove()` and `enumerateValidMoves()`.
 
-### Shuffle Algorithm
-`shuffle(steps, seed)` ensures solvability with intelligent move selection using a **Distance-Based + Adaptive** system:
+### Shuffle Algorithm (shuffle.js)
+`shuffle(state, steps, seed, randomizeGaps)` ensures solvability with intelligent move selection using a **Distance-Based + Adaptive** system:
 - Only uses valid moves from current state
 - Never creates impossible configurations
 - Uses `enumerateValidMoves()` to get legal moves with metadata
@@ -1575,19 +1701,19 @@ In `tryMove()` for large pieces (checked via `movingPiece.isLarge`):
 - **Fast execution**: No expensive move simulation, just distance calculations
 - **Wrapping support**: Distance calculations use shortest path when wrapping is enabled
 
-#### Shuffle Helper Functions
+#### Shuffle Helper Functions (shuffle.js)
 
 **Distance Calculation Functions** (wrapping-aware):
-- `gapDistance(gap1, gap2)`: Calculates Manhattan distance between two gaps
+- `gapDistance(state, gap1, gap2)`: Calculates Manhattan distance between two gaps
   - Uses shortest path when wrapping is enabled
   - Horizontal wrapping: `dx = min(|x1-x2|, width - |x1-x2|)`
   - Vertical wrapping: `dy = min(|y1-y2|, height - |y1-y2|)`
   
-- `calculateDistanceWeight(move, urgency, gapPieces)`: Calculates weight for a move based on gap distance
+- `calculateDistanceWeight(state, move, urgency, gapPieces)`: Calculates weight for a move based on gap distance
   - Normalizes predicted gap position with wrapping
   - Uses `gapDistance()` for wrapping-aware distance calculation
   
-- `calculateShuffleScore()`: Calculates shuffle quality score
+- `calculateShuffleScore(state)`: Calculates shuffle quality score
   - Measures Manhattan distance of large pieces from home positions
   - Uses shortest path when wrapping is enabled
   - Higher score indicates more scrambled puzzle
