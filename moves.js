@@ -210,8 +210,7 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
       
       if (!skipRender) state.renderAll();
       if (state.gameMode === 'challenge' && !state.isShuffling) {
-        state.challengeMoveCount++;
-        state.updateMoveCount();
+        state.incrementMoveCount();
         if (state.checkWinCondition()) {
           state.handleWin();
         }
@@ -395,8 +394,7 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
             
             if (!skipRender) state.renderAll();
             if (state.gameMode === 'challenge' && !state.isShuffling) {
-              state.challengeMoveCount++;
-              state.updateMoveCount();
+              state.incrementMoveCount();
               if (state.checkWinCondition()) {
                 state.handleWin();
               }
@@ -536,8 +534,7 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
             
             if (!skipRender) state.renderAll();
             if (state.gameMode === 'challenge' && !state.isShuffling) {
-              state.challengeMoveCount++;
-              state.updateMoveCount();
+              state.incrementMoveCount();
               if (state.checkWinCondition()) {
                 state.handleWin();
               }
@@ -569,8 +566,7 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
     
     if (!skipRender) state.renderAll();
     if (state.gameMode === 'challenge' && !state.isShuffling) {
-      state.challengeMoveCount++;
-      state.updateMoveCount();
+      state.incrementMoveCount();
       if (state.checkWinCondition()) {
         state.handleWin();
       }
@@ -637,8 +633,7 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
         
         if (!skipRender) state.renderAll();
         if (state.gameMode === 'challenge' && !state.isShuffling) {
-          state.challengeMoveCount++;
-          state.updateMoveCount();
+          state.incrementMoveCount();
           if (state.checkWinCondition()) {
             state.handleWin();
           }
@@ -731,8 +726,7 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
     
     if (!skipRender) state.renderAll();
     if (state.gameMode === 'challenge' && !state.isShuffling) {
-      state.challengeMoveCount++;
-      state.updateMoveCount();
+      state.incrementMoveCount();
       if (state.checkWinCondition()) {
         state.handleWin();
       }

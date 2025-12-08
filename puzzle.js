@@ -897,7 +897,11 @@ function getState() {
     handleWin: () => handleWin(),
     updateMoveCount: () => updateMoveCount(),
     buildGridFromState: () => buildGridFromState(),
-    calculateLargePieceDestination: (piece, dx, dy) => calculateLargePieceDestination(getState(), piece, dx, dy)
+    calculateLargePieceDestination: (piece, dx, dy) => calculateLargePieceDestination(getState(), piece, dx, dy),
+    incrementMoveCount: () => {
+      challengeMoveCount++;
+      updateMoveCount();
+    }
   };
 }
 
