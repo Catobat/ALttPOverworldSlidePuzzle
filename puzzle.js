@@ -163,9 +163,9 @@ const randomizeGapsBtn = document.getElementById('randomizeGapsBtn');
 const wrapHorizontalCheckbox = document.getElementById('wrapHorizontalCheckbox');
 const wrapVerticalCheckbox = document.getElementById('wrapVerticalCheckbox');
 const displayDialog = document.getElementById('displayDialog');
-const darkModeCheckbox = document.getElementById('darkModeCheckbox');
+const themeSelect = document.getElementById('themeSelect');
 const autoScaleCheckbox = document.getElementById('autoScaleCheckbox');
-const challengeAboveCheckbox = document.getElementById('challengeAboveCheckbox');
+const challengePositionSelect = document.getElementById('challengePositionSelect');
 const boardSizeSlider = document.getElementById('boardSizeSlider');
 const boardSizeValue = document.getElementById('boardSizeValue');
 const displayCloseBtn = document.getElementById('displayCloseBtn');
@@ -233,7 +233,7 @@ let timerHidden = false;
 // Display settings state
 let autoFitEnabled = false;
 let boardSizeScale = 100; // Board size percentage (50-200%)
-let challengeAbove = false; // Challenge box position: false = right side, true = above board
+let challengeBoxPosition = 'auto'; // Challenge box position: 'auto', 'right', or 'above'
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -979,6 +979,59 @@ function hasWrappedLargePieces(checkHorizontal, checkVertical) {
 // DISPLAY SETTINGS
 // ============================================================================
 
+/**
+ * Determines optimal challenge box position based on available space
+ * Returns 'above' or 'right' based on which gives more room for the board
+ */
+function determineOptimalChallengePosition() {
+  if (gameMode !== 'challenge') return 'right'; // Default when not in challenge mode
+  
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const padding = 16;
+  
+  // Challenge box dimensions (from CSS)
+  const challengeBoxMinWidth = 220;
+  const challengeBoxPadding = 32;
+  const challengeBoxBorder = 2;
+  const gap = 8;
+  
+  // Measure toolbar height
+  const toolbar = document.querySelector('.toolbar');
+  const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
+  
+  // Estimate challenge box height when above (compact horizontal layout)
+  // This is approximate - actual height depends on content wrapping
+  const estimatedChallengeBoxHeightAbove = 60; // Typical height for horizontal layout
+  
+  // Calculate available space for BOARD with challenge box on RIGHT
+  const horizontalSpaceRight = challengeBoxMinWidth + challengeBoxPadding + challengeBoxBorder + gap;
+  const availableWidthRight = viewportWidth - padding - horizontalSpaceRight;
+  const availableHeightRight = viewportHeight - padding - toolbarHeight;
+  
+  // Calculate available space for BOARD with challenge box ABOVE
+  const availableWidthAbove = viewportWidth - padding;
+  const availableHeightAbove = viewportHeight - padding - toolbarHeight - estimatedChallengeBoxHeightAbove - gap;
+  
+  // Calculate potential board area for each position
+  // For RIGHT position: calculate max board size
+  const tileSizeRight = Math.min(
+    Math.floor(availableWidthRight / boardConfig.width),
+    Math.floor(availableHeightRight / boardConfig.height)
+  );
+  const boardAreaRight = (tileSizeRight * boardConfig.width) * (tileSizeRight * boardConfig.height);
+  
+  // For ABOVE position: calculate max board size
+  const tileSizeAbove = Math.min(
+    Math.floor(availableWidthAbove / boardConfig.width),
+    Math.floor(availableHeightAbove / boardConfig.height)
+  );
+  const boardAreaAbove = (tileSizeAbove * boardConfig.width) * (tileSizeAbove * boardConfig.height);
+  
+  // Choose position that gives larger board area
+  return boardAreaAbove > boardAreaRight ? 'above' : 'right';
+}
+
 // Function to apply board size (either auto-fit or manual scale)
 // Uses iterative approach for board size changes to ensure proper sizing
 function applyBoardSize() {
@@ -990,7 +1043,7 @@ function applyBoardSize() {
     let lastBoardWidth = 0;
     
     const applyIteration = () => {
-      // Apply scaling
+      // Apply scaling (includes auto-positioning logic)
       updateAutoFitScale();
       
       // Check if we should continue iterating
@@ -1011,6 +1064,21 @@ function applyBoardSize() {
     applyIteration();
   } else {
     document.body.classList.remove('auto-fit');
+    
+    // Manual mode: apply explicit position if not auto
+    if (gameMode === 'challenge') {
+      if (challengeBoxPosition === 'auto') {
+        const optimalPosition = determineOptimalChallengePosition();
+        const effectiveAbove = (optimalPosition === 'above');
+        document.body.classList.toggle('challenge-auto-above', effectiveAbove);
+        document.body.classList.remove('challenge-above');
+      } else {
+        const manualAbove = (challengeBoxPosition === 'above');
+        document.body.classList.toggle('challenge-above', manualAbove);
+        document.body.classList.remove('challenge-auto-above');
+      }
+    }
+    
     // Apply manual board size scale
     const scaledTilePx = Math.floor(baseTilePx * (boardSizeScale / 100));
     document.documentElement.style.setProperty('--tile', `${scaledTilePx}px`);
@@ -1029,6 +1097,24 @@ function updateAutoFitScale() {
     return;
   }
   
+  // AUTO-POSITIONING LOGIC: Determine optimal position if in auto mode
+  let effectiveChallengeAbove = false;
+  if (gameMode === 'challenge') {
+    if (challengeBoxPosition === 'auto') {
+      const optimalPosition = determineOptimalChallengePosition();
+      effectiveChallengeAbove = (optimalPosition === 'above');
+      
+      // Apply the auto-determined position
+      document.body.classList.toggle('challenge-auto-above', effectiveChallengeAbove);
+      document.body.classList.remove('challenge-above'); // Remove manual class
+    } else {
+      // Manual mode: use the explicit setting
+      effectiveChallengeAbove = (challengeBoxPosition === 'above');
+      document.body.classList.remove('challenge-auto-above'); // Remove auto class
+      document.body.classList.toggle('challenge-above', effectiveChallengeAbove);
+    }
+  }
+  
   // Disable transitions during resize to prevent timing issues
   boardEl.classList.add('no-transitions');
   
@@ -1039,7 +1125,7 @@ function updateAutoFitScale() {
   
   // Calculate additional horizontal space needed for challenge box if it's to the right of the board
   let challengeBoxWidthSpace = 0;
-  if (gameMode === 'challenge' && !challengeAbove) {
+  if (gameMode === 'challenge' && !effectiveChallengeAbove) {
     // Challenge box is to the right: account for gap + full challenge box width
     const gap = 8; // gap between board and challenge box (from CSS .game-container)
     const challengeBoxMinWidth = 220; // min-width from CSS .challenge-info
@@ -1058,7 +1144,7 @@ function updateAutoFitScale() {
   }
   
   // Add challenge box height if it's above the board
-  if (gameMode === 'challenge' && challengeAbove) {
+  if (gameMode === 'challenge' && effectiveChallengeAbove) {
     const challengeInfo = document.getElementById('challengeInfo');
     if (challengeInfo) {
       verticalSpace += challengeInfo.offsetHeight;
@@ -1365,15 +1451,16 @@ congratsDialog.addEventListener('keydown', (e) => {
 
 displayBtn.addEventListener('click', () => {
   // Set current values in dialog
-  darkModeCheckbox.checked = document.body.classList.contains('dark-mode');
+  const currentTheme = localStorage.getItem('theme') || 'auto';
+  themeSelect.value = currentTheme;
   autoScaleCheckbox.checked = autoFitEnabled;
-  challengeAboveCheckbox.checked = challengeAbove;
+  challengePositionSelect.value = challengeBoxPosition;
   boardSizeSlider.value = boardSizeScale;
   boardSizeValue.textContent = `${boardSizeScale}%`;
   boardSizeSlider.disabled = autoFitEnabled;
   
   displayDialog.style.display = 'flex';
-  darkModeCheckbox.focus();
+  themeSelect.focus();
 });
 
 displayCloseBtn.addEventListener('click', () => {
@@ -1381,29 +1468,59 @@ displayCloseBtn.addEventListener('click', () => {
   boardEl.focus();
 });
 
-// Dark mode checkbox handler - applies instantly
-darkModeCheckbox.addEventListener('change', () => {
-  const isDarkMode = darkModeCheckbox.checked;
-  document.body.classList.toggle('dark-mode', isDarkMode);
-  localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
+// Theme dropdown handler - applies instantly
+themeSelect.addEventListener('change', () => {
+  const theme = themeSelect.value;
+  localStorage.setItem('theme', theme);
+  applyTheme(theme);
 });
 
 // Auto-scale checkbox handler - applies instantly
 autoScaleCheckbox.addEventListener('change', () => {
   autoFitEnabled = autoScaleCheckbox.checked;
   boardSizeSlider.disabled = autoFitEnabled;
+  
+  // Apply positioning immediately when toggling auto-scale
+  if (!autoFitEnabled && gameMode === 'challenge') {
+    // When disabling auto-scale, apply position immediately
+    if (challengeBoxPosition === 'auto') {
+      const optimalPosition = determineOptimalChallengePosition();
+      const effectiveAbove = (optimalPosition === 'above');
+      document.body.classList.toggle('challenge-auto-above', effectiveAbove);
+      document.body.classList.remove('challenge-above');
+    } else {
+      const manualAbove = (challengeBoxPosition === 'above');
+      document.body.classList.toggle('challenge-above', manualAbove);
+      document.body.classList.remove('challenge-auto-above');
+    }
+  }
+  
   applyBoardSize();
   localStorage.setItem('autoFit', autoFitEnabled ? 'enabled' : 'disabled');
 });
 
-// Challenge box position checkbox handler - applies instantly
-challengeAboveCheckbox.addEventListener('change', () => {
-  challengeAbove = challengeAboveCheckbox.checked;
-  document.body.classList.toggle('challenge-above', challengeAbove);
-  localStorage.setItem('challengeAbove', challengeAbove ? 'enabled' : 'disabled');
-  // Reapply board size since challenge box position affects available space
+// Challenge box position dropdown handler - applies instantly
+challengePositionSelect.addEventListener('change', () => {
+  challengeBoxPosition = challengePositionSelect.value;
+  localStorage.setItem('challengeBoxPosition', challengeBoxPosition);
+  
+  // Reapply board size to trigger repositioning
   if (autoFitEnabled) {
     applyBoardSize();
+  } else {
+    // Manual scaling: apply position immediately
+    if (gameMode === 'challenge') {
+      if (challengeBoxPosition === 'auto') {
+        const optimalPosition = determineOptimalChallengePosition();
+        const effectiveAbove = (optimalPosition === 'above');
+        document.body.classList.toggle('challenge-auto-above', effectiveAbove);
+        document.body.classList.remove('challenge-above');
+      } else {
+        const manualAbove = (challengeBoxPosition === 'above');
+        document.body.classList.toggle('challenge-above', manualAbove);
+        document.body.classList.remove('challenge-auto-above');
+      }
+    }
   }
 });
 
@@ -1533,18 +1650,69 @@ function checkURLParams() {
 // INITIALIZATION
 // ============================================================================
 
+// Helper function to apply theme based on selection
+function applyTheme(theme) {
+  if (theme === 'auto') {
+    // Use system preference
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.body.classList.toggle('dark-mode', prefersDark);
+  } else if (theme === 'dark') {
+    document.body.classList.add('dark-mode');
+  } else {
+    document.body.classList.remove('dark-mode');
+  }
+}
+
 // Load saved preferences
-if (localStorage.getItem('darkMode') === 'enabled') {
-  document.body.classList.add('dark-mode');
+const savedTheme = localStorage.getItem('theme');
+if (savedTheme) {
+  applyTheme(savedTheme);
+} else {
+  // Migrate old darkMode setting if it exists
+  if (localStorage.getItem('darkMode') === 'enabled') {
+    localStorage.setItem('theme', 'dark');
+    applyTheme('dark');
+    localStorage.removeItem('darkMode'); // Clean up old setting
+  } else {
+    // Default to auto
+    localStorage.setItem('theme', 'auto');
+    applyTheme('auto');
+  }
 }
 
-if (localStorage.getItem('autoFit') === 'enabled') {
+// Listen for system theme changes when in auto mode
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  const currentTheme = localStorage.getItem('theme') || 'auto';
+  if (currentTheme === 'auto') {
+    document.body.classList.toggle('dark-mode', e.matches);
+  }
+});
+
+// Load auto-fit preference (default to enabled for new users)
+const savedAutoFit = localStorage.getItem('autoFit');
+if (savedAutoFit === 'disabled') {
+  autoFitEnabled = false;
+} else {
+  // Default to enabled (either explicitly enabled or not set)
   autoFitEnabled = true;
+  if (!savedAutoFit) {
+    localStorage.setItem('autoFit', 'enabled');
+  }
 }
 
-if (localStorage.getItem('challengeAbove') === 'enabled') {
-  challengeAbove = true;
-  document.body.classList.add('challenge-above');
+// Load challenge box position preference
+const savedPosition = localStorage.getItem('challengeBoxPosition');
+if (savedPosition && ['auto', 'right', 'above'].includes(savedPosition)) {
+  challengeBoxPosition = savedPosition;
+} else {
+  // Migrate old challengeAbove setting if it exists
+  if (localStorage.getItem('challengeAbove') === 'enabled') {
+    challengeBoxPosition = 'above';
+    localStorage.setItem('challengeBoxPosition', 'above');
+    localStorage.removeItem('challengeAbove'); // Clean up old setting
+  } else {
+    challengeBoxPosition = 'auto'; // Default to auto
+  }
 }
 
 const savedBoardSize = localStorage.getItem('boardSize');

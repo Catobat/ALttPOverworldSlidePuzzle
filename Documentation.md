@@ -1353,16 +1353,30 @@ The game includes a unified display settings dialog accessed via the sun icon (â
 ### Display Settings Dialog
 - **Display Button**: Cog icon (âš™) in right toolbar group
 - **Settings Include**:
-  - **Dark theme**: Checkbox to toggle between light and dark modes
-  - **Challenge box above board**: Checkbox to position challenge info box above the board instead of to the right
-  - **Auto-scale to fit screen**: Checkbox to enable automatic board resizing for mobile devices
+  - **Theme**: Dropdown with three options:
+    - **Auto** (default): Automatically follows system theme preference using `prefers-color-scheme` media query
+    - **Light**: Forces light theme regardless of system preference
+    - **Dark**: Forces dark theme regardless of system preference
+  - **Challenge box position**: Dropdown with three options:
+    - **Auto** (default): Automatically chooses optimal position based on available space
+    - **Right of board**: Forces challenge box to right side
+    - **Above board**: Forces challenge box above board
+  - **Auto-scale to fit screen**: Checkbox to enable automatic board resizing (enabled by default for new users)
   - **Board size**: Slider to manually adjust board size from 50% to 200% (disabled when auto-scale is enabled)
 - **Instant Application**: All settings apply immediately without requiring confirmation
 - **Persistence**: All preferences saved to localStorage and restored on page load
 
 ### Challenge Box Position
-- **Default Position**: Challenge info box appears to the right of the puzzle board
-- **Above Board Position**: When enabled via Display Settings, challenge box moves above the board
+- **Three Position Modes**: Auto (default), Right of board, Above board
+- **Auto Mode**: Automatically determines optimal position based on available space
+  - Estimates board size for both positions before auto-scaling runs
+  - Calculates potential board area for each position
+  - Chooses position that allows larger board display
+  - Recalculates when window is resized, board changes, or game mode switches
+  - Works seamlessly with auto-scaling feature
+- **Manual Modes**:
+  - **Right of board**: Forces challenge box to right side (original default)
+  - **Above board**: Forces challenge box above the board
 - **Layout Changes**:
   - **Right Side (default)**: Vertical layout with full info display
     - Title at top
@@ -1382,13 +1396,24 @@ The game includes a unified display settings dialog accessed via the sun icon (â
   - Better for mobile/narrow viewports
   - Reduces horizontal scrolling on small screens
 - **CSS Implementation**:
-  - Controlled by `body.challenge-above` class
+  - Auto mode: Controlled by `body.challenge-auto-above` class (when auto chooses above)
+  - Manual mode: Controlled by `body.challenge-above` class (when manually set to above)
   - Game container switches from row to column layout via flexbox
   - Challenge info rows display inline with spacing
   - Stats group changes from vertical to horizontal with baseline alignment
+  - Both classes share the same styling rules for consistency
 
-### Dark Mode
-- **Implementation**: Adds/removes `dark-mode` class on body element
+### Theme System
+- **Three Theme Modes**:
+  - **Auto Mode**: Detects system preference using `window.matchMedia('(prefers-color-scheme: dark)')`
+    - Automatically updates when system theme changes
+    - Listens for `change` events on the media query
+    - Only applies automatic updates when in Auto mode
+  - **Light Mode**: Forces light theme by removing `dark-mode` class
+  - **Dark Mode**: Forces dark theme by adding `dark-mode` class
+- **Implementation**: `applyTheme(theme)` function handles all three modes
+- **Migration**: Automatically migrates old `darkMode` localStorage setting to new `theme` setting
+- **Default**: Auto mode for new users (follows system preference)
 - **Styling**: Dark mode styles defined in `puzzle.css`
   - Background: #1a1a1a (dark)
   - Text: #e0e0e0 (light)
@@ -1400,7 +1425,7 @@ The game includes a unified display settings dialog accessed via the sun icon (â
   - All UI elements styled for consistency in dark mode
 
 ### Auto-Scale Mode
-- **Default State**: Off by default
+- **Default State**: Enabled by default for new users
 - **How It Works**: When enabled, adjusts the `--tile` CSS variable to fit the viewport in both dimensions
 - **Dual-Constraint Calculation**: Considers both width and height to ensure board fits completely
   - **Width Constraint**: `widthTileSize = (viewportWidth - 40px - challengeBoxSpace) / boardConfig.width`
@@ -1433,13 +1458,23 @@ The game includes a unified display settings dialog accessed via the sun icon (â
 
 #### State Variables
 ```javascript
-baseTilePx        // Constant: original tile size (64px)
-tilePx            // Variable: current tile size (changes with settings)
-autoFitEnabled    // Boolean: whether auto-scale is active
-boardSizeScale    // Number: manual board size percentage (50-200)
+baseTilePx           // Constant: original tile size (64px)
+tilePx               // Variable: current tile size (changes with settings)
+autoFitEnabled       // Boolean: whether auto-scale is active
+boardSizeScale       // Number: manual board size percentage (50-200)
+challengeBoxPosition // String: 'auto', 'right', or 'above'
 ```
 
 #### Key Functions
+- `determineOptimalChallengePosition()`: Calculates which position gives more board space
+  - Returns 'above' or 'right' based on estimated board areas
+  - Considers viewport dimensions, toolbar height, and challenge box dimensions
+  - Estimates challenge box height for above position (compact horizontal layout)
+  - Calculates available space for board in both configurations
+  - Computes potential tile size and board area for each position
+  - Chooses position that maximizes board display area
+  - Called by both auto-scaling and manual scaling when in auto mode
+
 - `applyBoardSize()`: Applies either auto-scale or manual board size
   - Adds/removes `auto-fit` class on body element
   - **Auto-scale enabled**: Uses iterative approach to ensure proper sizing
@@ -1453,6 +1488,11 @@ boardSizeScale    // Number: manual board size percentage (50-200)
     - Calls `renderAll()` to update tile positions
   
 - `updateAutoFitScale()`: Calculates and applies responsive sizing (single pass)
+  - **Auto-positioning logic**: Runs first if in Challenge Mode
+    - If `challengeBoxPosition === 'auto'`: Calls `determineOptimalChallengePosition()`
+    - Applies appropriate CSS class (`challenge-auto-above` or removes it)
+    - If manual mode: Applies `challenge-above` class based on explicit setting
+    - Removes conflicting classes to ensure clean state
   - **Measures viewport dimensions**: Gets both width and height
   - **Calculates horizontal space**:
     - Accounts for body margins (40px)
@@ -1480,9 +1520,13 @@ When auto-scale is enabled, `applyBoardSize()` is called in these scenarios:
 - **Auto-scale toggle**: When enabling/disabling auto-scale in display settings
 - **Board switching**: When changing board layout (Default/Horizontal/Vertical)
 - **Board size slider**: When manually adjusting board size (only if auto-scale is disabled)
-- **Challenge box position**: When toggling challenge box position (above vs right side)
+- **Challenge box position**: When changing position mode (auto/right/above)
+  - Auto mode: Triggers repositioning calculation
+  - Manual modes: Applies explicit position immediately
 - **Game mode changes**: When switching between Free Play and Challenge Mode
+  - Auto mode recalculates optimal position for new mode
 - **Window resize**: Uses single-pass `updateAutoFitScale()` (debounced, no iteration for performance)
+  - Auto mode automatically adjusts position if optimal choice changes
 
 ### Background Positioning Strategy
 To support dynamic tile resizing:
@@ -1597,10 +1641,15 @@ For screens 600px wide or smaller, dialogs automatically adapt for better mobile
 - Opened by "Display" button (âš™) in toolbar
 - Contains:
   - Dark theme checkbox - Toggles dark mode instantly
+  - Challenge box position dropdown - Three options:
+    - **Auto** (default): Automatically chooses optimal position
+    - **Right of board**: Forces challenge box to right side
+    - **Above board**: Forces challenge box above board
   - Auto-scale checkbox - Enables automatic board resizing, disables size slider when active
   - Board size slider - Adjusts board size from 50% to 200% (disabled when auto-scale is enabled)
   - Close button
 - All settings apply instantly (no confirmation needed)
+- Auto mode works with both auto-scaling and manual scaling
 - Escape key closes dialog
 - Click outside dialog to close
 - Returns focus to board when closed

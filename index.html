@@ -128,17 +128,21 @@
     <div class="dialog">
       <h2>Display Settings</h2>
       <div class="dialog-content">
-        <div class="form-group checkbox-group">
-          <label>
-            <input type="checkbox" id="darkModeCheckbox" />
-            <span>Dark theme</span>
-          </label>
+        <div class="form-group">
+          <label for="themeSelect">Theme:</label>
+          <select id="themeSelect" class="board-select">
+            <option value="auto">Auto</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
         </div>
-        <div class="form-group checkbox-group">
-          <label>
-            <input type="checkbox" id="challengeAboveCheckbox" />
-            <span>Challenge box above board</span>
-          </label>
+        <div class="form-group">
+          <label for="challengePositionSelect">Challenge box position:</label>
+          <select id="challengePositionSelect" class="board-select">
+            <option value="auto">Auto</option>
+            <option value="right">Right of board</option>
+            <option value="above">Above board</option>
+          </select>
         </div>
         <div class="form-group checkbox-group">
           <label>

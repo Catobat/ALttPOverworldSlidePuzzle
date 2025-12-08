@@ -42,14 +42,16 @@ body { font-family: system-ui, Arial, sans-serif; margin: 8px; color: #222; }
 }
 
 /* When challenge box is above board, use column layout */
-body.challenge-above .game-container {
+body.challenge-above .game-container,
+body.challenge-auto-above .game-container {
   flex-direction: column;
   gap: 8px;
   align-items: stretch;
 }
 
 /* Use CSS order to put challenge-info above board in column layout */
-body.challenge-above .challenge-info {
+body.challenge-above .challenge-info,
+body.challenge-auto-above .challenge-info {
   order: -1;
 }
 
@@ -63,7 +65,8 @@ body.challenge-above .challenge-info {
 }
 
 /* Horizontal layout when challenge box is above board */
-body.challenge-above .challenge-info {
+body.challenge-above .challenge-info,
+body.challenge-auto-above .challenge-info {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -83,7 +86,8 @@ body.challenge-above .challenge-info {
 }
 
 /* Horizontal layout adjustments */
-body.challenge-above .challenge-info-title {
+body.challenge-above .challenge-info-title,
+body.challenge-auto-above .challenge-info-title {
   margin-bottom: 0;
   margin-right: auto;
 }
@@ -94,14 +98,16 @@ body.challenge-above .challenge-info-title {
 }
 
 /* Horizontal layout adjustments - make rows inline */
-body.challenge-above .challenge-info-row {
+body.challenge-above .challenge-info-row,
+body.challenge-auto-above .challenge-info-row {
   margin-bottom: 0;
   white-space: nowrap;
   display: inline-block;
   margin-right: 20px;
 }
 
-body.challenge-above .challenge-info-row:last-of-type {
+body.challenge-above .challenge-info-row:last-of-type,
+body.challenge-auto-above .challenge-info-row:last-of-type {
   margin-right: 0;
 }
 
@@ -119,7 +125,8 @@ body.challenge-above .challenge-info-row:last-of-type {
 }
 
 /* Horizontal layout adjustments */
-body.challenge-above .challenge-stats-container {
+body.challenge-above .challenge-stats-container,
+body.challenge-auto-above .challenge-stats-container {
   margin-top: 0;
   padding-top: 0;
   border-top: none;
@@ -136,7 +143,8 @@ body.challenge-above .challenge-stats-container {
 }
 
 /* Horizontal layout adjustments */
-body.challenge-above .challenge-stat-group {
+body.challenge-above .challenge-stat-group,
+body.challenge-auto-above .challenge-stat-group {
   flex: 0 0 auto;
   flex-direction: row;
   gap: 8px;
@@ -150,7 +158,8 @@ body.challenge-above .challenge-stat-group {
 }
 
 /* Horizontal layout adjustments */
-body.challenge-above .challenge-stat-label {
+body.challenge-above .challenge-stat-label,
+body.challenge-auto-above .challenge-stat-label {
   font-size: 0.85rem;
 }
 
@@ -163,7 +172,8 @@ body.challenge-above .challenge-stat-label {
 }
 
 /* Horizontal layout adjustments */
-body.challenge-above .challenge-stat-value {
+body.challenge-above .challenge-stat-value,
+body.challenge-auto-above .challenge-stat-value {
   font-size: 1.2rem;
 }
 
