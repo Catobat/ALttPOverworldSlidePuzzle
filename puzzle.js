@@ -1031,13 +1031,13 @@ function updateAutoFitScale() {
   // Get viewport dimensions
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const padding = 40; // Account for body margins (20px each side)
+  const padding = 16; // Account for body margins (8px each side)
   
   // Calculate additional horizontal space needed for challenge box if it's to the right of the board
   let challengeBoxWidthSpace = 0;
   if (gameMode === 'challenge' && !challengeAbove) {
     // Challenge box is to the right: account for gap + full challenge box width
-    const gap = 20; // gap between board and challenge box (from CSS .game-container)
+    const gap = 8; // gap between board and challenge box (from CSS .game-container)
     const challengeBoxMinWidth = 220; // min-width from CSS .challenge-info
     const challengeBoxPadding = 32; // padding: 16px on each side (from CSS .challenge-info)
     const challengeBoxBorder = 2; // border: 1px on each side (from CSS .challenge-info)
@@ -1059,7 +1059,7 @@ function updateAutoFitScale() {
     if (challengeInfo) {
       verticalSpace += challengeInfo.offsetHeight;
       // Add gap between challenge box and board (from CSS .game-container)
-      verticalSpace += 20;
+      verticalSpace += 8;
     }
   }
   

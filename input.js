@@ -703,7 +703,7 @@ function handlePointerMove(state, e) {
             });
           }
           
-          const previewOffset = 15;
+          const previewOffset = state.tilePx / 4;
           let offsetX = 0, offsetY = 0;
           
           // Piece moves opposite to swipe direction
@@ -749,7 +749,7 @@ function handlePointerMove(state, e) {
       const validSwipe = gapInDirection ? tryMove(state, swipeDir, gapInDirection, null, true) : false;
 
       if (validSwipe) {
-        const previewOffset = 15;
+        const previewOffset = state.tilePx / 4;
         let offsetX = 0, offsetY = 0;
 
         if (swipeDir === 'right') offsetX = previewOffset;
