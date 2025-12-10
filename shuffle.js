@@ -287,7 +287,7 @@ export async function shuffle(state, steps, seed = null, randomizeGaps = false) 
   // This ensures that changing any parameter produces a different shuffle
   // Using XOR with bit shifting to avoid overflow and ensure good bit mixing
   // Board hash: default=0, horizontal=1, vertical=2 (shifted left by 24 bits)
-  const boardHash = state.currentBoardSlug === 'horizontal' ? 1 : state.currentBoardSlug === 'vertical' ? 2 : 0;
+  const boardHash = state.currentBoardSlug === 'horizontal' ? 1 : state.currentBoardSlug === 'vertical' ? 2 : state.currentBoardSlug === 'classic' ? 3 : 0;
   const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24) ^ (state.selectedGapConfigIndex << 8) ^ (randomizeGaps << 12) ^ (state.wrapHorizontal << 13) ^ (state.wrapVertical << 14)) >>> 0) : null;
   const rng = combinedSeed !== null ? new SeededRandom(combinedSeed) : null;
   const random = () => rng ? rng.next() : Math.random();

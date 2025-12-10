@@ -147,11 +147,32 @@ const verticalBoard = {
   ]
 };
 
+const smallPiecesBoard = {
+  width: 8,           // Board width in tiles
+  height: 8,          // Board height in tiles
+  imageMode: 'single', // 'single', 'horizontal', or 'vertical'
+  images: {
+    primary: 'lightworld.png'  // Single image for entire board
+  },
+  largePieces: [],    // No large pieces - all tiles are 1×1
+  wrapHorizontal: false,  // Enable horizontal wrapping
+  wrapVertical: false,    // Enable vertical wrapping
+  gapConfigurations: [    // Available gap configurations for this board
+    {
+      name: "1 small gap (bottom right)",
+      gaps: [
+        {x: 7, y: 7}  // Single small gap in bottom right corner
+      ]
+    }
+  ]
+};
+
 // Board registry for easy lookup
 const boardRegistry = {
   'default': defaultBoard,
   'horizontal': horizontalBoard,
-  'vertical': verticalBoard
+  'vertical': verticalBoard,
+  'classic': smallPiecesBoard
 };
 
 // ============================================================================

@@ -47,6 +47,14 @@ The game supports multiple board configurations with different layouts and backg
    - **Gap Configurations**:
      - "2 small gaps (bottom right)": Gaps at (7,14) and (7,15)
 
+4. **Classic Slide Puzzle Board** (`smallPiecesBoard`) - Slug: `'classic'`
+   - **Grid Size**: 8×8 (64 cells total)
+   - **Image Mode**: `'single'` - One image for entire board
+   - **Background Image**: `lightworld.png`
+   - **Large Pieces**: None - all tiles are 1×1 small pieces
+   - **Gap Configurations**:
+     - "1 small gap (bottom right)": Single gap at (7,7)
+
 #### Board Configuration Structure
 ```javascript
 const boardConfig = {
