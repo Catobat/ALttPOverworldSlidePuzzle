@@ -22,13 +22,16 @@ import { initializeInputHandlers } from './input.js';
 // - 'horizontal': Two images side by side (left/right halves)
 // - 'vertical': Two images stacked (top/bottom halves)
 
-// Gap Identity System:
+// Gap Configuration System:
 //
-// The `gapIdentities` array defines which board cells are "gap cells" by identity.
-// Each coordinate represents:
-// 1. A cell that acts as a gap in the SOLVED state
-// 2. The background image crop that gap will display (its visual identity)
-// 3. A cell that should NOT have a tile created for it during initialization
+// Each board has a `gapConfigurations` array containing one or more gap placement options.
+// Each configuration has:
+// - name: Descriptive name shown in UI (e.g., "2 small gaps (bottom right)")
+// - gaps: Array of {x, y} positions where gaps should be placed
+//
+// Gap size is determined automatically:
+// - If a gap position matches a large piece position, it becomes a large gap (2×2)
+// - Otherwise, it becomes a small gap (1×1)
 //
 // During gameplay:
 // - Gaps can move to different positions (gaps[i].x, gaps[i].y)
@@ -48,18 +51,28 @@ const defaultBoard = {
   images: {
     primary: 'lightworld.png'  // Single image for entire board
   },
-  gapIdentities: [    // Gap identity positions (array of {x, y})
-    {x: 7, y: 6},
-    {x: 7, y: 7}
-  ],
-  largeGapIdentities: [], // Large gap identity positions (array of {x, y} for top-left corners)
   largePieces: [      // Large piece top-left corners (array of {x, y})
     {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
     {x: 0, y: 6}, {x: 5, y: 6}
   ],
   wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false     // Enable vertical wrapping
+  wrapVertical: false,    // Enable vertical wrapping
+  gapConfigurations: [    // Available gap configurations for this board
+    {
+      name: "2 small gaps (bottom right)",
+      gaps: [
+        {x: 7, y: 6},
+        {x: 7, y: 7}
+      ]
+    },
+    {
+      name: "1 large gap (bottom left)",
+      gaps: [
+        {x: 0, y: 6}  // This position matches a large piece, so it becomes a large gap
+      ]
+    }
+  ]
 };
 
 const horizontalBoard = {
@@ -70,11 +83,6 @@ const horizontalBoard = {
     primary: 'lightworld.png',   // Left half (x: 0-7)
     secondary: 'darkworld.png'   // Right half (x: 8-15)
   },
-  gapIdentities: [    // Gap identity positions in bottom right corner of right half
-    {x: 15, y: 6},
-    {x: 15, y: 7}
-  ],
-  largeGapIdentities: [], // Large gap identity positions (array of {x, y} for top-left corners)
   largePieces: [      // Left half: same as default
     {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
@@ -85,7 +93,22 @@ const horizontalBoard = {
     {x: 8, y: 6}, {x: 13, y: 6}
   ],
   wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false     // Enable vertical wrapping
+  wrapVertical: false,    // Enable vertical wrapping
+  gapConfigurations: [    // Available gap configurations for this board
+    {
+      name: "2 small gaps (bottom right)",
+      gaps: [
+        {x: 15, y: 6},
+        {x: 15, y: 7}
+      ]
+    },
+    {
+      name: "1 large gap (bottom left)",
+      gaps: [
+        {x: 0, y: 6}  // This position matches a large piece, so it becomes a large gap
+      ]
+    }
+  ]
 };
 
 const verticalBoard = {
@@ -96,11 +119,6 @@ const verticalBoard = {
     primary: 'lightworld.png',   // Top half (y: 0-7)
     secondary: 'darkworld.png'   // Bottom half (y: 8-15)
   },
-  gapIdentities: [    // Gap identity positions in bottom right corner of bottom half
-    {x: 7, y: 14},
-    {x: 7, y: 15}
-  ],
-  largeGapIdentities: [], // Large gap identity positions (array of {x, y} for top-left corners)
   largePieces: [      // Top half: same as default
     {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
@@ -111,35 +129,29 @@ const verticalBoard = {
     {x: 0, y: 14}, {x: 5, y: 14}
   ],
   wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false     // Enable vertical wrapping
-};
-
-const largeGapBoard = {
-  width: 8,           // Board width in tiles
-  height: 8,          // Board height in tiles
-  imageMode: 'single', // 'single', 'horizontal', or 'vertical'
-  images: {
-    primary: 'lightworld.png'  // Single image for entire board
-  },
-  gapIdentities: [],  // No small gaps
-  largeGapIdentities: [    // Large gap identity positions (array of {x, y} for top-left corners)
-    {x: 0, y: 6}
-  ],
-  largePieces: [      // Large piece top-left corners (array of {x, y})
-    {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
-    {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
-    {x: 5, y: 6}  // Removed (0,6) since it's now a large gap
-  ],
-  wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false     // Enable vertical wrapping
+  wrapVertical: false,    // Enable vertical wrapping
+  gapConfigurations: [    // Available gap configurations for this board
+    {
+      name: "2 small gaps (bottom right)",
+      gaps: [
+        {x: 7, y: 14},
+        {x: 7, y: 15}
+      ]
+    },
+    {
+      name: "1 large gap (bottom left)",
+      gaps: [
+        {x: 0, y: 14}  // This position matches a large piece, so it becomes a large gap
+      ]
+    }
+  ]
 };
 
 // Board registry for easy lookup
 const boardRegistry = {
   'default': defaultBoard,
   'horizontal': horizontalBoard,
-  'vertical': verticalBoard,
-  'largegap': largeGapBoard
+  'vertical': verticalBoard
 };
 
 // ============================================================================
@@ -157,6 +169,7 @@ const settingsBtn = document.getElementById('settingsBtn');
 const displayBtn = document.getElementById('displayBtn');
 const settingsDialog = document.getElementById('settingsDialog');
 const settingsBoardSelect = document.getElementById('settingsBoardSelect');
+const settingsGapConfigSelect = document.getElementById('settingsGapConfigSelect');
 const settingsCancelBtn = document.getElementById('settingsCancelBtn');
 const resetGapsBtn = document.getElementById('resetGapsBtn');
 const randomizeGapsBtn = document.getElementById('randomizeGapsBtn');
@@ -171,6 +184,7 @@ const boardSizeValue = document.getElementById('boardSizeValue');
 const displayCloseBtn = document.getElementById('displayCloseBtn');
 const challengeDialog = document.getElementById('challengeDialog');
 const challengeBoardSelect = document.getElementById('challengeBoardSelect');
+const challengeGapConfigSelect = document.getElementById('challengeGapConfigSelect');
 const randomizeGapsCheckbox = document.getElementById('randomizeGapsCheckbox');
 const challengeWrapHorizontalCheckbox = document.getElementById('challengeWrapHorizontalCheckbox');
 const challengeWrapVerticalCheckbox = document.getElementById('challengeWrapVerticalCheckbox');
@@ -200,6 +214,7 @@ const timerToggleBtn = document.getElementById('timerToggleBtn');
 // Currently active board configuration
 let boardConfig = defaultBoard;
 let currentBoardSlug = 'default';
+let selectedGapConfigIndex = 0; // Index into boardConfig.gapConfigurations
 
 // State - Unified piece system
 // All pieces (including gaps) stored in a single array
@@ -327,6 +342,26 @@ function getBackgroundPositionCalc(homeX, homeY) {
 }
 
 /**
+ * Helper function to populate gap configuration dropdown
+ * @param {HTMLSelectElement} selectElement - The select element to populate
+ * @param {string} boardSlug - The board slug to get configurations from
+ */
+function populateGapConfigDropdown(selectElement, boardSlug) {
+  const board = boardRegistry[boardSlug];
+  selectElement.innerHTML = '';
+  
+  board.gapConfigurations.forEach((config, index) => {
+    const option = document.createElement('option');
+    option.value = index;
+    option.textContent = config.name;
+    selectElement.appendChild(option);
+  });
+  
+  // Set current selection
+  selectElement.value = selectedGapConfigIndex;
+}
+
+/**
  * Helper function to create a piece (tile or gap)
  * @param {boolean} isGap - Whether this is a gap
  * @param {boolean} isLarge - Whether this is a large piece/gap
@@ -381,8 +416,13 @@ function initTiles() {
   pieces = [];
   pieceById.clear();
 
-  // Make a quick mask for big home coverage (both large pieces and large gaps)
+  // Get current gap configuration
+  const gapConfig = boardConfig.gapConfigurations[selectedGapConfigIndex];
+  
+  // Build coverage mask for large pieces AND large gaps
   const covered = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(false));
+  
+  // Mark all large piece positions as covered (including those that will become large gaps)
   boardConfig.largePieces.forEach(({x,y})=>{
     for(let dy=0; dy<2; dy++){
       for(let dx=0; dx<2; dx++){
@@ -390,37 +430,48 @@ function initTiles() {
       }
     }
   });
-  boardConfig.largeGapIdentities.forEach(({x,y})=>{
-    for(let dy=0; dy<2; dy++){
-      for(let dx=0; dx<2; dx++){
-        covered[y+dy][x+dx] = true;
-      }
+  
+  // Create large pieces (excluding those that are gaps)
+  let bigPieceIdx = 0;
+  boardConfig.largePieces.forEach((home) => {
+    const isGap = gapConfig.gaps.some(g => g.x === home.x && g.y === home.y);
+    if (!isGap) {
+      const piece = createPiece(false, true, `B${bigPieceIdx++}`, home.x, home.y);
+      pieces.push(piece);
+      pieceById.set(piece.id, piece);
     }
   });
   
-  // Create big pieces first
-  boardConfig.largePieces.forEach((home, i) => {
-    const piece = createPiece(false, true, `B${i}`, home.x, home.y);
-    pieces.push(piece);
-    pieceById.set(piece.id, piece);
-  });
-
   // Create large gaps
-  boardConfig.largeGapIdentities.forEach((home, i) => {
-    const piece = createPiece(true, true, `BG${i}`, home.x, home.y);
-    pieces.push(piece);
-    pieceById.set(piece.id, piece);
+  let bigGapIdx = 0;
+  gapConfig.gaps.forEach((gapPos) => {
+    const isLargePiecePosition = boardConfig.largePieces.some(
+      lp => lp.x === gapPos.x && lp.y === gapPos.y
+    );
+    
+    if (isLargePiecePosition) {
+      const piece = createPiece(true, true, `BG${bigGapIdx++}`, gapPos.x, gapPos.y);
+      pieces.push(piece);
+      pieceById.set(piece.id, piece);
+    }
   });
 
-  // Create small pieces AND small gaps
-  const isGapIdentity = (x,y) => boardConfig.gapIdentities.some(g => g.x===x && g.y===y);
+  // Create small pieces and small gaps
+  const isSmallGapIdentity = (x,y) => {
+    return gapConfig.gaps.some(g => {
+      if (g.x !== x || g.y !== y) return false;
+      // Only count as small gap if not a large piece position
+      return !boardConfig.largePieces.some(lp => lp.x === x && lp.y === y);
+    });
+  };
+  
   let sIdx = 0;
   let gIdx = 0;
   for(let y=0; y<boardConfig.height; y++){
     for(let x=0; x<boardConfig.width; x++){
       if(covered[y][x]) continue;
       
-      const isGap = isGapIdentity(x,y);
+      const isGap = isSmallGapIdentity(x,y);
       const id = isGap ? `G${gIdx++}` : `S${sIdx++}`;
       
       const piece = createPiece(isGap, false, id, x, y);
@@ -480,6 +531,9 @@ function switchBoard(boardSlug) {
   boardConfig = boardRegistry[boardSlug];
   currentBoardSlug = boardSlug;
   
+  // Reset gap configuration index to 0 when switching boards
+  selectedGapConfigIndex = 0;
+  
   // Update board dimensions
   boardEl.style.width = `calc(${boardConfig.width} * var(--tile))`;
   boardEl.style.height = `calc(${boardConfig.height} * var(--tile))`;
@@ -505,8 +559,10 @@ function resetState() {
 }
 
 function resetGapIdentities() {
-  // Find pieces that should be gaps based on board configuration
+  // Find pieces that should be gaps based on current gap configuration
   // and toggle their isGap flag without moving anything
+  
+  const gapConfig = boardConfig.gapConfigurations[selectedGapConfigIndex];
   
   // First, convert all current gaps to regular pieces
   const currentGaps = pieces.filter(p => p.isGap);
@@ -516,28 +572,19 @@ function resetGapIdentities() {
     piece.selected = false;
   }
   
-  // Now find pieces with the original small gap identities and convert them to gaps
+  // Now find pieces that should be gaps based on configuration
   const newGapPieces = [];
-  for (const gapIdentity of boardConfig.gapIdentities) {
-    // Find the piece with this identity (homeX, homeY)
-    const piece = pieces.find(p =>
-      p.homeX === gapIdentity.x &&
-      p.homeY === gapIdentity.y &&
-      !p.isLarge
+  for (const gapPos of gapConfig.gaps) {
+    // Check if this is a large piece position
+    const isLargePiecePosition = boardConfig.largePieces.some(
+      lp => lp.x === gapPos.x && lp.y === gapPos.y
     );
     
-    if (piece) {
-      newGapPieces.push(piece);
-    }
-  }
-  
-  // Find pieces with the original large gap identities and convert them to large gaps
-  for (const largeGapIdentity of boardConfig.largeGapIdentities) {
     // Find the piece with this identity (homeX, homeY)
     const piece = pieces.find(p =>
-      p.homeX === largeGapIdentity.x &&
-      p.homeY === largeGapIdentity.y &&
-      p.isLarge
+      p.homeX === gapPos.x &&
+      p.homeY === gapPos.y &&
+      p.isLarge === isLargePiecePosition
     );
     
     if (piece) {
@@ -727,10 +774,11 @@ function updateURL() {
   const url = new URL(window.location);
   
   if (gameMode === 'challenge' && challengeSeed !== null && challengeSteps !== null) {
-    // Challenge mode: add seed, steps, board, randomizeGaps, and wrapping parameters
+    // Challenge mode: add seed, steps, board, gapConfig, randomizeGaps, and wrapping parameters
     url.searchParams.set('seed', challengeSeed);
     url.searchParams.set('steps', challengeSteps);
     url.searchParams.set('board', challengeBoard || currentBoardSlug);
+    url.searchParams.set('gapConfig', selectedGapConfigIndex.toString());
     if (challengeRandomizeGaps) {
       url.searchParams.set('randomizeGaps', 'true');
     } else {
@@ -751,6 +799,7 @@ function updateURL() {
     url.searchParams.delete('seed');
     url.searchParams.delete('steps');
     url.searchParams.delete('board');
+    url.searchParams.delete('gapConfig');
     url.searchParams.delete('randomizeGaps');
     url.searchParams.delete('wrapH');
     url.searchParams.delete('wrapV');
@@ -783,7 +832,7 @@ function switchToFreePlay() {
   }
 }
 
-async function startChallenge(seed, steps, boardSlug = null, randomizeGaps = false, wrapH = false, wrapV = false) {
+async function startChallenge(seed, steps, boardSlug = null, gapConfigIndex = 0, randomizeGaps = false, wrapH = false, wrapV = false) {
   gameMode = 'challenge';
   challengeSeed = seed;
   challengeSteps = steps;
@@ -805,6 +854,9 @@ async function startChallenge(seed, steps, boardSlug = null, randomizeGaps = fal
   if (challengeBoard !== currentBoardSlug) {
     switchBoard(challengeBoard);
   }
+  
+  // Apply gap configuration
+  selectedGapConfigIndex = gapConfigIndex;
   
   updateUIForMode();
   updateURL(); // Update URL when starting challenge
@@ -871,6 +923,7 @@ function getState() {
     tilePx,
     baseTilePx,
     currentBoardSlug,
+    selectedGapConfigIndex,
     
     // Data structures
     pieces,
@@ -1205,7 +1258,7 @@ function updateAutoFitScale() {
 resetBtn.addEventListener('click', () => {
   if (gameMode === 'challenge') {
     // In challenge mode, reset recreates the challenge with the same settings
-    startChallenge(challengeSeed, challengeSteps, challengeBoard, challengeRandomizeGaps, challengeWrapHorizontal, challengeWrapVertical);
+    startChallenge(challengeSeed, challengeSteps, challengeBoard, selectedGapConfigIndex, challengeRandomizeGaps, challengeWrapHorizontal, challengeWrapVertical);
   } else {
     // In free play mode, reset returns to solved state
     resetState();
@@ -1267,6 +1320,8 @@ timerToggleBtn.addEventListener('click', () => {
 settingsBtn.addEventListener('click', () => {
   // Set current board in dropdown
   settingsBoardSelect.value = currentBoardSlug;
+  // Populate gap configuration dropdown
+  populateGapConfigDropdown(settingsGapConfigSelect, currentBoardSlug);
   // Set current wrapping state
   wrapHorizontalCheckbox.checked = wrapHorizontal;
   wrapVerticalCheckbox.checked = wrapVertical;
@@ -1283,10 +1338,22 @@ settingsCancelBtn.addEventListener('click', () => {
 settingsBoardSelect.addEventListener('change', () => {
   const selectedBoard = settingsBoardSelect.value;
   
+  // Reset gap configuration to first option before other actions
+  selectedGapConfigIndex = 0;
+  
+  // Repopulate gap config dropdown for new board
+  populateGapConfigDropdown(settingsGapConfigSelect, selectedBoard);
+  
   // Switch board if different
   if (selectedBoard !== currentBoardSlug) {
     switchBoard(selectedBoard);
   }
+});
+
+// Gap config select change handler - applies instantly
+settingsGapConfigSelect.addEventListener('change', () => {
+  selectedGapConfigIndex = parseInt(settingsGapConfigSelect.value);
+  resetState(); // Rebuild with new gap configuration
 });
 
 // Allow Escape to close
@@ -1357,11 +1424,24 @@ wrapVerticalCheckbox.addEventListener('change', () => {
 challengeBtn.addEventListener('click', () => {
   // Set current board in dropdown
   challengeBoardSelect.value = currentBoardSlug;
+  // Populate gap configuration dropdown
+  populateGapConfigDropdown(challengeGapConfigSelect, currentBoardSlug);
   // Set current wrapping state for challenge
   challengeWrapHorizontalCheckbox.checked = wrapHorizontal;
   challengeWrapVerticalCheckbox.checked = wrapVertical;
   challengeDialog.style.display = 'flex';
   seedInput.focus();
+});
+
+// Challenge board select change handler - updates gap config dropdown
+challengeBoardSelect.addEventListener('change', () => {
+  const selectedBoard = challengeBoardSelect.value;
+  
+  // Reset gap configuration to first option before other actions
+  selectedGapConfigIndex = 0;
+  
+  // Repopulate gap config dropdown for new board
+  populateGapConfigDropdown(challengeGapConfigSelect, selectedBoard);
 });
 
 // Difficulty preset buttons
@@ -1392,6 +1472,7 @@ challengeStartBtn.addEventListener('click', async () => {
   const seedValue = seedInput.value.trim();
   const steps = parseInt(stepsInput.value) || 250;
   const boardSlug = challengeBoardSelect.value;
+  const gapConfigIndex = parseInt(challengeGapConfigSelect.value);
   const randomizeGaps = randomizeGapsCheckbox.checked;
   const wrapH = challengeWrapHorizontalCheckbox.checked;
   const wrapV = challengeWrapVerticalCheckbox.checked;
@@ -1412,7 +1493,7 @@ challengeStartBtn.addEventListener('click', async () => {
   }
   
   // Start the challenge
-  await startChallenge(seed, steps, boardSlug, randomizeGaps, wrapH, wrapV);
+  await startChallenge(seed, steps, boardSlug, gapConfigIndex, randomizeGaps, wrapH, wrapV);
   
   boardEl.focus();
 });
@@ -1622,6 +1703,7 @@ function checkURLParams() {
   const seedParam = urlParams.get('seed');
   const stepsParam = urlParams.get('steps');
   const boardParam = urlParams.get('board');
+  const gapConfigParam = urlParams.get('gapConfig');
   const randomizeGapsParam = urlParams.get('randomizeGaps');
   const wrapHParam = urlParams.get('wrapH');
   const wrapVParam = urlParams.get('wrapV');
@@ -1632,15 +1714,16 @@ function checkURLParams() {
     const seed = parseInt(seedParam);
     const steps = parseInt(stepsParam) || 250;
     const boardSlug = boardParam && boardRegistry[boardParam] ? boardParam : 'default';
+    const gapConfigIndex = gapConfigParam ? parseInt(gapConfigParam) : 0;
     const randomizeGaps = randomizeGapsParam === 'true';
     const wrapH = wrapHParam === 'true';
     const wrapV = wrapVParam === 'true';
     
-    console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}, board=${boardSlug}, randomizeGaps=${randomizeGaps}, wrapH=${wrapH}, wrapV=${wrapV}`);
+    console.log(`Auto-starting challenge from URL: seed=${seed}, steps=${steps}, board=${boardSlug}, gapConfig=${gapConfigIndex}, randomizeGaps=${randomizeGaps}, wrapH=${wrapH}, wrapV=${wrapV}`);
     
     // Start challenge after initialization
     setTimeout(async () => {
-      await startChallenge(seed, steps, boardSlug, randomizeGaps, wrapH, wrapV);
+      await startChallenge(seed, steps, boardSlug, gapConfigIndex, randomizeGaps, wrapH, wrapV);
       boardEl.focus();
     }, 0);
   }

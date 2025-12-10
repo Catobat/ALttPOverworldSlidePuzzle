@@ -47,8 +47,23 @@ class SeededRandom {
  * @param {Function} randomInt - Random integer function (for seeded or unseeded randomness)
  */
 export function performGapRandomization(state, randomInt) {
-  const numSmallGaps = state.boardConfig.gapIdentities.length;
-  const numLargeGaps = state.boardConfig.largeGapIdentities.length;
+  const gapConfig = state.boardConfig.gapConfigurations[state.selectedGapConfigIndex];
+  
+  // Count small and large gaps in configuration
+  let numSmallGaps = 0;
+  let numLargeGaps = 0;
+  
+  for (const gapPos of gapConfig.gaps) {
+    const isLargePiecePosition = state.boardConfig.largePieces.some(
+      lp => lp.x === gapPos.x && lp.y === gapPos.y
+    );
+    
+    if (isLargePiecePosition) {
+      numLargeGaps++;
+    } else {
+      numSmallGaps++;
+    }
+  }
 
   // Filter small pieces only (current small gaps and small tiles)
   const smallPieces = state.pieces.filter(p => !p.isLarge);
@@ -273,7 +288,7 @@ export async function shuffle(state, steps, seed = null, randomizeGaps = false) 
   // Using XOR with bit shifting to avoid overflow and ensure good bit mixing
   // Board hash: default=0, horizontal=1, vertical=2 (shifted left by 24 bits)
   const boardHash = state.currentBoardSlug === 'horizontal' ? 1 : state.currentBoardSlug === 'vertical' ? 2 : 0;
-  const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24) ^ (randomizeGaps << 12) ^ (state.wrapHorizontal << 13) ^ (state.wrapVertical << 14)) >>> 0) : null;
+  const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24) ^ (state.selectedGapConfigIndex << 8) ^ (randomizeGaps << 12) ^ (state.wrapHorizontal << 13) ^ (state.wrapVertical << 14)) >>> 0) : null;
   const rng = combinedSeed !== null ? new SeededRandom(combinedSeed) : null;
   const random = () => rng ? rng.next() : Math.random();
   const randomInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max);

@@ -22,10 +22,10 @@ The game supports multiple board configurations with different layouts and backg
    - **Grid Size**: 8×8 (64 cells total)
    - **Image Mode**: `'single'` - One image for entire board
    - **Background Image**: `lightworld.png`
-   - **Pieces**: 30 small (1×1) + 8 large (2×2)
-   - **Gaps**: 2 small gaps at positions (7,6) and (7,7)
-   - **Large Gaps**: None (empty array)
    - **Large Pieces**: Top-left corners at (0,0), (3,0), (5,0), (0,3), (3,3), (6,3), (0,6), (5,6)
+   - **Gap Configurations**:
+     - "2 small gaps (bottom right)": Gaps at (7,6) and (7,7)
+     - "1 large gap (bottom left)": Gap at (0,6) - becomes large gap because position contains a large piece
 
 2. **Horizontal Board** (`horizontalBoard`) - Slug: `'horizontal'`
    - **Grid Size**: 16×8 (128 cells total) - double width
@@ -33,10 +33,9 @@ The game supports multiple board configurations with different layouts and backg
    - **Background Images**:
      - Left half (x: 0-7): `lightworld.png`
      - Right half (x: 8-15): `darkworld.png`
-   - **Pieces**: 60 small (1×1) + 16 large (2×2)
-   - **Gaps**: 2 small gaps at positions (15,6) and (15,7) - bottom right of right half
-   - **Large Gaps**: None (empty array)
    - **Large Pieces**: Left half mirrors default layout, right half duplicates it shifted 8 tiles right
+   - **Gap Configurations**:
+     - "2 small gaps (bottom right)": Gaps at (15,6) and (15,7)
 
 3. **Vertical Board** (`verticalBoard`) - Slug: `'vertical'`
    - **Grid Size**: 8×16 (128 cells total) - double height
@@ -44,20 +43,9 @@ The game supports multiple board configurations with different layouts and backg
    - **Background Images**:
      - Top half (y: 0-7): `lightworld.png`
      - Bottom half (y: 8-15): `darkworld.png`
-   - **Pieces**: 60 small (1×1) + 16 large (2×2)
-   - **Gaps**: 2 small gaps at positions (7,14) and (7,15) - bottom right of bottom half
-   - **Large Gaps**: None (empty array)
    - **Large Pieces**: Top half mirrors default layout, bottom half duplicates it shifted 8 tiles down
-
-4. **Large Gap Board** (`largeGapBoard`) - Slug: `'largegap'`
-   - **Grid Size**: 8×8 (64 cells total)
-   - **Image Mode**: `'single'` - One image for entire board
-   - **Background Image**: `lightworld.png`
-   - **Pieces**: 32 small (1×1) + 7 large (2×2)
-   - **Gaps**: None (empty array)
-   - **Large Gaps**: 1 large gap at position (0,6) - bottom left corner
-   - **Large Pieces**: Top-left corners at (0,0), (3,0), (5,0), (0,3), (3,3), (6,3), (5,6)
-   - **Note**: Experimental board type demonstrating large gap mechanics
+   - **Gap Configurations**:
+     - "2 small gaps (bottom right)": Gaps at (7,14) and (7,15)
 
 #### Board Configuration Structure
 ```javascript
@@ -69,12 +57,19 @@ const boardConfig = {
     primary: 'lightworld.png',    // Primary image (or only image for single mode)
     secondary: 'darkworld.png'    // Secondary image (for horizontal/vertical modes)
   },
-  gapIdentities: [{x: 7, y: 6}, {x: 7, y: 7}],  // Small gap identity positions
-  largeGapIdentities: [],  // Large gap identity positions (top-left corners)
   largePieces: [         // Large piece top-left corners
     {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
     {x: 0, y: 6}, {x: 5, y: 6}
+  ],
+  wrapHorizontal: false, // Enable horizontal wrapping
+  wrapVertical: false,   // Enable vertical wrapping
+  gapConfigurations: [   // Available gap configurations for this board
+    {
+      name: "2 small gaps (bottom right)",
+      gaps: [{x: 7, y: 6}, {x: 7, y: 7}]
+    }
+    // Additional configurations can be added here
   ]
 };
 ```
@@ -84,20 +79,31 @@ const boardConfig = {
 - **`'horizontal'`**: Two images side by side. Each image covers half the board width and full height. Left half uses primary image, right half uses secondary image.
 - **`'vertical'`**: Two images stacked. Each image covers full board width and half the height. Top half uses primary image, bottom half uses secondary image.
 
-### Gap Identity System
+### Gap Configuration System
 
-Gaps are not just empty spaces—they are entities with persistent identity that remember which part of the puzzle image they represent, even when they move.
+Each board can have multiple gap placement options, allowing players to choose different gap configurations for variety.
+
+**Gap Configuration Structure**:
+- Each board has a `gapConfigurations` array containing one or more gap placement options
+- Each configuration has:
+  - `name`: Descriptive name shown in UI (e.g., "2 small gaps (bottom right)")
+  - `gaps`: Array of `{x, y}` positions where gaps should be placed
+
+**Gap Size Determination**:
+- Gap size is determined automatically based on position
+- If a gap position matches a large piece position (from `largePieces` array), it becomes a large gap (2×2)
+- Otherwise, it becomes a small gap (1×1)
+- No separate arrays for small and large gaps in the data model
+
+**Gap Selection**:
+- Players can select gap configuration from dropdown in Settings dialog (Free Play)
+- Players can select gap configuration from dropdown in Challenge dialog
+- Selection is stored in `selectedGapConfigIndex` (index into `gapConfigurations` array)
+- Gap configuration is included in challenge URLs as `gapConfig` parameter
 
 **Identity vs Position**:
 - **Identity** (`homeX`, `homeY`): Which board cell the gap represents; defines its background crop
 - **Position** (`x`, `y`): Where the gap currently is on the board
-
-**Board Configuration**:
-- `gapIdentities`: Array of `{x, y}` coordinates defining which cells are gap cells
-- These coordinates serve three purposes:
-  1. Define which cells act as gaps in the solved state
-  2. Define the background image crop each gap displays (its visual identity)
-  3. Indicate which cells should NOT have tiles created during initialization
 
 **During Gameplay**:
 - Gaps move around the board (position changes)
@@ -110,17 +116,17 @@ Gaps are not just empty spaces—they are entities with persistent identity that
 - Pieces toggle between acting as gaps or tiles (via `isGap` flag)
 - All pieces keep their original identities (homeX, homeY unchanged)
 - Only the behavior changes, not the visual identity
-- **Small and large gaps are randomized separately**: The number of small gaps and large gaps stays the same, but which pieces act as gaps is randomized within each size category
+- **Small and large gaps are randomized separately**: The number of small gaps and large gaps stays the same (based on current configuration), but which pieces act as gaps is randomized within each size category
 
 ### Large Gap System
 
 Large gaps are 2×2 gaps that function similarly to large pieces but act as empty spaces. They introduce new movement possibilities and strategic depth to the puzzle.
 
 #### Configuration
-- **Board Configuration**: `largeGapIdentities` array defines large gap positions
-- **Format**: Array of `{x, y}` coordinates representing top-left corners of 2×2 gaps
-- **Example**: `largeGapIdentities: [{x: 2, y: 2}, {x: 6, y: 4}]`
-- **Current Status**: All boards have empty arrays, ready for future use
+- **Gap Configuration System**: Large gaps are defined in `gapConfigurations` array
+- **Automatic Detection**: If a gap position matches a large piece position, it becomes a large gap
+- **Format**: Same `{x, y}` format as small gaps in the `gaps` array
+- **Example**: In a gap configuration, `{x: 0, y: 6}` becomes a large gap if `largePieces` contains `{x: 0, y: 6}`
 
 #### Type System
 - **Flags**:
@@ -377,11 +383,16 @@ When wrapping is enabled, additional adjacency relationships exist:
 #### URL Parameters
 
 **Challenge URLs**:
-- `wrapH=1`: Horizontal wrapping enabled
-- `wrapV=1`: Vertical wrapping enabled
-- Example: `?seed=12345&steps=250&board=default&wrapH=1&wrapV=1`
-- Parameters are optional (default to disabled)
-- Enables sharing of challenges with specific wrapping configurations
+- `seed`: Challenge seed (numeric)
+- `steps`: Number of shuffle steps
+- `board`: Board slug (default, horizontal, vertical)
+- `gapConfig`: Gap configuration index (0-based index into board's gapConfigurations array)
+- `randomizeGaps`: Whether gaps were randomized (true/false)
+- `wrapH`: Horizontal wrapping enabled (true/false)
+- `wrapV`: Vertical wrapping enabled (true/false)
+- Example: `?seed=12345&steps=250&board=default&gapConfig=0&wrapH=true&wrapV=true`
+- Parameters are optional (defaults: board=default, gapConfig=0, others=false)
+- Enables sharing of challenges with specific configurations
 
 #### Win Condition with Wrapping
 
@@ -699,15 +710,19 @@ The game has two distinct modes:
 boardConfig          // Object defining board layout
   .width             // Board width in tiles (8)
   .height            // Board height in tiles (8)
-  .gapIdentities[]   // Array of small gap identity positions [{x, y}, ...]
-  .largeGapIdentities[]  // Array of large gap identity positions (top-left corners) [{x, y}, ...]
   .largePieces[]     // Array of large piece top-left corners [{x, y}, ...]
+  .wrapHorizontal    // Enable horizontal wrapping
+  .wrapVertical      // Enable vertical wrapping
+  .gapConfigurations[] // Array of gap configuration options
+    [i].name         // Configuration name (e.g., "2 small gaps (bottom right)")
+    [i].gaps[]       // Array of gap positions [{x, y}, ...]
 ```
 
 #### State Variables
 ```javascript
 boardConfig          // Currently active board configuration object
 currentBoardSlug     // Current board slug ('default', 'horizontal', 'vertical')
+selectedGapConfigIndex // Index into boardConfig.gapConfigurations (current gap configuration)
 boardRegistry        // Map of board slugs to board configuration objects
 grid                 // 2D array: {isGap, isLarge, id, ox, oy} for occupied cells, null for empty
 pieces[]             // Unified array: {id, isGap, isLarge, x, y, homeX, homeY, el, innerEl, selected}
@@ -838,11 +853,13 @@ All pieces (including gaps) share the same structure:
 #### Initialization (puzzle.js)
 
 - `initTiles()`: Creates all piece DOM elements and data structures
-  - Builds coverage mask for both large pieces and large gaps
-  - Creates large pieces first from `boardConfig.largePieces` array
-  - Creates large gaps from `boardConfig.largeGapIdentities` array
-  - Creates small pieces for remaining uncovered, non-gap identity cells
-  - Creates small gap pieces for cells in `boardConfig.gapIdentities` array
+  - Gets current gap configuration from `boardConfig.gapConfigurations[selectedGapConfigIndex]`
+  - Builds coverage mask for large pieces and gaps (both small and large)
+  - Determines gap size automatically: if gap position matches large piece position, it's a large gap
+  - Creates large pieces first (excluding those that are gaps)
+  - Creates large gaps (gap positions that match large piece positions)
+  - Creates small pieces for remaining uncovered, non-gap cells
+  - Creates small gaps (gap positions that don't match large piece positions)
   - All pieces stored in unified `pieces[]` array
   - Sets first gap as selected using `piece.selected = true`
   - **Sets background image dynamically** using `getBackgroundStyleForTile()`
@@ -862,13 +879,23 @@ All pieces (including gaps) share the same structure:
 
 #### Gap Management (puzzle.js)
 
-- `resetGapIdentities()`: Resets gaps to their original board configuration positions
+- `resetGapIdentities()`: Resets gaps to their current gap configuration positions
+  - Gets current gap configuration from `boardConfig.gapConfigurations[selectedGapConfigIndex]`
   - Converts all current gaps to regular pieces
-  - Finds pieces with original gap identities (from `boardConfig.gapIdentities` and `boardConfig.largeGapIdentities`)
+  - Finds pieces that should be gaps based on configuration
+  - Determines gap size automatically (large if position matches large piece)
   - Converts those pieces to gaps
   - Maintains piece identities and positions (no movement)
   - Rebuilds grid and updates DOM
   - Used by "Reset Gaps" button in Settings dialog
+
+- `populateGapConfigDropdown(selectElement, boardSlug)`: Populates gap configuration dropdown
+  - Gets board configuration from registry
+  - Creates option elements for each gap configuration
+  - Sets option value to configuration index
+  - Sets option text to configuration name
+  - Selects current gap configuration
+  - Used when opening Settings or Challenge dialogs
 
 - `randomizeGapIdentities()`: Randomizes which cells act as gaps
   - Uses unseeded random number generator
@@ -985,8 +1012,10 @@ All pieces (including gaps) share the same structure:
   - Default 250 moves provides good randomization with meaningful piece movements
 
 - `performGapRandomization(state, randomInt)`: Randomizes which pieces act as gaps
+  - Gets current gap configuration to determine number of small and large gaps
+  - Counts small and large gaps in configuration (based on whether positions match large pieces)
   - Separates small and large pieces
-  - Randomly selects which pieces should be gaps (maintaining count)
+  - Randomly selects which pieces should be gaps (maintaining count from configuration)
   - Converts all pieces to regular pieces first
   - Converts selected pieces to gaps
   - Preserves all piece identities (homeX, homeY unchanged)
@@ -995,13 +1024,14 @@ All pieces (including gaps) share the same structure:
 
 #### Challenge Management (puzzle.js)
 
-- `startChallenge(seed, steps, boardSlug, randomizeGaps, wrapH, wrapV)`: Initializes a new challenge
+- `startChallenge(seed, steps, boardSlug, gapConfigIndex, randomizeGaps, wrapH, wrapV)`: Initializes a new challenge
   - Sets game mode to 'challenge'
-  - Stores seed, steps, and board slug for reset functionality
+  - Stores seed, steps, board slug, and gap config index for reset functionality
   - Switches to specified board if different from current
+  - Applies gap configuration (sets `selectedGapConfigIndex`)
   - Resets move counter to 0
   - Calls `stopTimer()` to clear any previous timer state
-  - Updates URL with seed, steps, and board parameters
+  - Updates URL with seed, steps, board, and gapConfig parameters
   - Resets to solved state then shuffles with seed (no animations)
   - Starts timer after shuffle completes
 - `updateUIForMode()`: Updates UI based on current mode
@@ -1610,18 +1640,24 @@ For screens 600px wide or smaller, dialogs automatically adapt for better mobile
     - Default (8×8)
     - Horizontal (16×8)
     - Vertical (8×16)
+  - Gap configuration dropdown (populated dynamically based on selected board)
   - Warning message: "Changing the board shape will reset the puzzle to its solved state"
-  - Apply button
-  - Cancel button
-- Enter key applies changes
-- Escape key cancels
-- Click outside dialog to cancel
-- Applies board change and resets puzzle when confirmed
+  - Gap control buttons (Reset Gaps, Randomize Gaps)
+  - Wrapping checkboxes (Horizontal wrapping, Vertical wrapping)
+  - Close button
+- Board selection applies instantly and repopulates gap config dropdown
+- Gap configuration selection applies instantly and resets puzzle
+- Escape key closes dialog
+- Click outside dialog to close
+- Returns focus to board when closed
 
 ### Challenge Dialog
 - Opened by "New Challenge" button
 - Contains:
   - Board selection dropdown (same options as Settings dialog)
+  - Gap configuration dropdown (populated dynamically based on selected board)
+  - Randomize gaps checkbox
+  - Wrapping checkboxes (Horizontal wrapping, Vertical wrapping)
   - Seed input field (type="number", optional, min=0)
     - "Daily Challenge" button next to seed input
     - Clicking "Daily Challenge" populates seed with today's date in YYYYMMDD format (e.g., 20251125)
@@ -1631,6 +1667,8 @@ For screens 600px wide or smaller, dialogs automatically adapt for better mobile
   - Start Challenge button
   - Cancel button
 - Board selection defaults to currently active board
+- Gap configuration defaults to currently active configuration
+- Board selection change repopulates gap config dropdown
 - Enter key starts challenge
 - Escape key cancels
 - Click outside dialog to cancel

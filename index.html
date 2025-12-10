@@ -83,12 +83,17 @@
       <h2>Board Settings</h2>
       <div class="dialog-content">
         <div class="form-group">
-          <label for="settingsBoardSelect">Board Shape:</label>
+          <label for="settingsBoardSelect">Board:</label>
           <select id="settingsBoardSelect" class="board-select">
             <option value="default">Default (8×8)</option>
             <option value="horizontal">Horizontal (16×8)</option>
             <option value="vertical">Vertical (8×16)</option>
-            <option value="largegap">Large Gap (Experimental)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="settingsGapConfigSelect">Gap Configuration:</label>
+          <select id="settingsGapConfigSelect" class="board-select">
+            <!-- Options populated dynamically -->
           </select>
         </div>
         <div class="settings-warning">
@@ -172,7 +177,12 @@
             <option value="default">Default (8×8)</option>
             <option value="horizontal">Horizontal (16×8)</option>
             <option value="vertical">Vertical (8×16)</option>
-            <option value="largegap">Large Gap (Experimental)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="challengeGapConfigSelect">Gap Configuration:</label>
+          <select id="challengeGapConfigSelect" class="board-select">
+            <!-- Options populated dynamically -->
           </select>
         </div>
         <div class="form-group checkbox-group">
