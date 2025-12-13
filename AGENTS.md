@@ -14,38 +14,36 @@ This file contains specific rules and guidelines for AI coding assistants workin
 ## Project-Specific Rules
 
 ### Modular Architecture
-This project uses a modular ES6 architecture with separation of concerns:
+This project uses a modular ES6 architecture with strict separation of concerns between HTML, CSS, and JavaScript modules. Each module has a specific responsibility (movement logic, input handling, rendering, etc.).
 
-**HTML & CSS:**
-- [`index.html`](index.html) - Structure only (loads [`puzzle.js`](puzzle.js) as ES6 module)
-- [`puzzle.css`](puzzle.css) - Styling only
+**Key Rules:**
+- Maintain separation: no inline styles or scripts in HTML
+- Keep code in the appropriate module based on its responsibility
+- Modules receive state via `getState()` function - never store state references at module level
 
-**JavaScript Modules:**
-- [`puzzle.js`](puzzle.js) - Core game logic, state management, UI handlers (main entry point)
-- [`moves.js`](moves.js) - Movement logic and validation
-- [`input.js`](input.js) - Input handling (mouse, touch, keyboard)
-- [`shuffle.js`](shuffle.js) - Shuffle algorithm and quality scoring
-- [`render.js`](render.js) - DOM rendering and visual updates
-
-**MAINTAIN** this separation when making changes:
-- Don't add inline styles to HTML
-- Don't add inline scripts to HTML
-- Keep movement logic in [`moves.js`](moves.js)
-- Keep input handling in [`input.js`](input.js)
-- Keep rendering logic in [`render.js`](render.js)
-- Keep shuffle algorithm in [`shuffle.js`](shuffle.js)
-- Core logic and coordination stays in [`puzzle.js`](puzzle.js)
-
-**State Management:**
-- Modules receive state via a `getState()` function that returns current state
-- This ensures modules always work with up-to-date references when boards are switched
-- Never store state object references at module level - always get fresh state when needed
+See [`Documentation.md`](Documentation.md) for complete details on file structure, module organization, and state management patterns.
 
 ### Documentation Updates
 - **ALWAYS** update [`Documentation.md`](Documentation.md) after adding new functionality or making significant changes
 - Keep the technical documentation comprehensive and accurate
 - For player-facing changes (new features, controls, game modes), **CONSIDER** updating [`README.md`](README.md)
 - Keep [`README.md`](README.md) brief and user-focused - only include what players need to know
+
+**What to Include in Documentation:**
+- **Cross-cutting concerns** - Information relevant across multiple parts of the codebase (e.g., game modes, state management patterns, module communication)
+- **Important architectural decisions** - Design patterns and structural choices that affect how code should be written
+- **Non-obvious behavior** - Things that aren't immediately clear from reading a single function or file
+- **Global constraints** - Rules that must be followed throughout the codebase
+
+**What NOT to Include:**
+- **Implementation details** - How a specific function works internally (belongs in code comments)
+- **Obvious information** - Things that are self-explanatory from the code or description
+- **Changelog-style entries** - Focus on current state, not history of changes
+- **Excessive examples** - Only include examples when the description alone isn't clear
+
+**Keep Documentation Focused:**
+- Only document the most important things - overly detailed documentation becomes unusable
+- If something only matters when looking at a specific file or function, document it there with comments instead
 
 ### Documentation Style
 - **DO NOT** include line numbers when referencing code in documentation

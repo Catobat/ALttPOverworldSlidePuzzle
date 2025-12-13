@@ -7,6 +7,7 @@ A browser-based slide puzzle game featuring mixed-size pieces and dual-gap mecha
 - **Multiple Board Sizes**: Choose from Default (8×8), Horizontal (16×8), or Vertical (8×16) layouts
 - **Mixed Piece Sizes**: Small (1×1) and large (2×2) pieces
 - **Dual-Gap System**: Two movable gaps that pieces slide into
+- **Gap Configurations**: Multiple gap size options, including configurations with a large (2×2) gap
 - **Gap Randomization**: Optionally randomize which cells act as gaps (Free Play and Challenge Mode)
 - **Wrapping Options**: Enable horizontal and/or vertical wrapping for toroidal board topology
 - **Two Game Modes**:
@@ -55,11 +56,14 @@ For comprehensive technical documentation, game mechanics, and development guide
 
 ## Quick Start
 
-1. Open [`index.html`](index.html) in a modern web browser
-2. Use keyboard or mouse to slide pieces
-3. Try the shuffle button or start a challenge!
+1. Serve the project using a local HTTP server (required for ES6 modules)
+   - Example: `python -m http.server` or use VS Code's Live Server extension
+2. Open `index.html` in a modern web browser
+3. Use keyboard or mouse to slide pieces
+4. Try the shuffle button or start a challenge!
 
 ## Requirements
 
 - Modern web browser with ES6+ support
-- No installation or build process required
+- Local HTTP server (for ES6 module loading)
+- No build process required
