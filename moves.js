@@ -209,6 +209,12 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
       }
       
       if (!skipRender) state.renderAll();
+      
+      // Capture history AFTER successful move (not during shuffle or dry-run)
+      if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
+        state.captureHistorySnapshot();
+      }
+      
       if (state.gameMode === 'challenge' && !state.isShuffling) {
         state.incrementMoveCount();
         if (state.checkWinCondition()) {
@@ -393,6 +399,12 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
             }
             
             if (!skipRender) state.renderAll();
+            
+            // Capture history AFTER successful move (not during shuffle or dry-run)
+            if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
+              state.captureHistorySnapshot();
+            }
+            
             if (state.gameMode === 'challenge' && !state.isShuffling) {
               state.incrementMoveCount();
               if (state.checkWinCondition()) {
@@ -533,6 +545,12 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
             }
             
             if (!skipRender) state.renderAll();
+            
+            // Capture history AFTER successful move (not during shuffle or dry-run)
+            if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
+              state.captureHistorySnapshot();
+            }
+            
             if (state.gameMode === 'challenge' && !state.isShuffling) {
               state.incrementMoveCount();
               if (state.checkWinCondition()) {
@@ -565,6 +583,12 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
     state.grid[selectedGap.y][selectedGap.x] = { isGap: true, isLarge: false, id: selectedGap.id };
     
     if (!skipRender) state.renderAll();
+    
+    // Capture history AFTER successful move (not during shuffle or dry-run)
+    if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
+      state.captureHistorySnapshot();
+    }
+    
     if (state.gameMode === 'challenge' && !state.isShuffling) {
       state.incrementMoveCount();
       if (state.checkWinCondition()) {
@@ -632,6 +656,12 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
         }
         
         if (!skipRender) state.renderAll();
+        
+        // Capture history AFTER successful move (not during shuffle or dry-run)
+        if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
+          state.captureHistorySnapshot();
+        }
+        
         if (state.gameMode === 'challenge' && !state.isShuffling) {
           state.incrementMoveCount();
           if (state.checkWinCondition()) {
@@ -725,6 +755,12 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
     }
     
     if (!skipRender) state.renderAll();
+    
+    // Capture history AFTER successful move (not during shuffle or dry-run)
+    if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
+      state.captureHistorySnapshot();
+    }
+    
     if (state.gameMode === 'challenge' && !state.isShuffling) {
       state.incrementMoveCount();
       if (state.checkWinCondition()) {

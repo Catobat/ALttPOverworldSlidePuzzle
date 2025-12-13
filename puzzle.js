@@ -176,6 +176,12 @@ const boardRegistry = {
 };
 
 // ============================================================================
+// UNDO/REDO HISTORY CONSTANTS
+// ============================================================================
+
+const MAX_HISTORY_SIZE = 1000;
+
+// ============================================================================
 // DOM ELEMENT REFERENCES
 // ============================================================================
 
@@ -227,6 +233,8 @@ const helpCloseBtn = document.getElementById('helpCloseBtn');
 const challengeTimerDisplay = document.getElementById('challengeTimerDisplay');
 const timerShowBtn = document.getElementById('timerShowBtn');
 const timerToggleBtn = document.getElementById('timerToggleBtn');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
 
 // ============================================================================
 // STATE VARIABLES
@@ -270,6 +278,10 @@ let timerHidden = false;
 let autoFitEnabled = false;
 let boardSizeScale = 100; // Board size percentage (50-200%)
 let challengeBoxPosition = 'auto'; // Challenge box position: 'auto', 'right', or 'above'
+
+// Undo/Redo history state
+let moveHistory = [];      // Array of snapshots
+let historyIndex = -1;      // Current position in history (-1 = no history)
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -430,6 +442,146 @@ function createPiece(isGap, isLarge, id, x, y) {
 }
 
 // ============================================================================
+// UNDO/REDO HISTORY FUNCTIONS
+// ============================================================================
+
+/**
+ * Capture current state snapshot for undo/redo history
+ * Called AFTER executing a move to save the new state
+ *
+ * IMPORTANT: This should be called AFTER moves complete, not before.
+ * The initial state (history[0]) should be the starting position for undo/redo:
+ * - In Free Play after Reset: the solved state
+ * - In Free Play after Shuffle: the shuffled state
+ * - In Challenge Mode: the shuffled challenge state
+ */
+function captureHistorySnapshot() {
+  // If we're not at the end of history, truncate future history
+  // This happens when we undo, then make a new move
+  if (historyIndex < moveHistory.length - 1) {
+    moveHistory = moveHistory.slice(0, historyIndex + 1);
+  }
+  
+  // Create snapshot of current piece positions (AFTER the move)
+  const snapshot = {
+    pieces: pieces.map(p => ({
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      selected: p.selected
+    }))
+  };
+  
+  // Add to history
+  moveHistory.push(snapshot);
+  historyIndex = moveHistory.length - 1;
+  
+  // Enforce history size limit
+  if (moveHistory.length > MAX_HISTORY_SIZE + 1) {
+    moveHistory.shift();
+    historyIndex = moveHistory.length - 1;
+  }
+  
+  updateUndoRedoButtons();
+}
+
+/**
+ * Restore state from a snapshot
+ * @param {Object} snapshot - Snapshot to restore
+ */
+function restoreSnapshot(snapshot) {
+  // Restore piece positions and selection
+  for (const snapPiece of snapshot.pieces) {
+    const piece = pieceById.get(snapPiece.id);
+    if (piece) {
+      piece.x = snapPiece.x;
+      piece.y = snapPiece.y;
+      piece.selected = snapPiece.selected;
+    }
+  }
+  
+  // Rebuild grid and render
+  buildGridFromState();
+  renderAll();
+  
+  // Check win condition in Challenge Mode
+  if (gameMode === 'challenge' && !challengeSolved) {
+    if (checkWinCondition()) {
+      handleWin();
+    }
+  }
+}
+
+/**
+ * Undo the last move
+ */
+function undo() {
+  // Can't undo if we're at the initial state (index 0) or have no history
+  if (moveHistory.length <= 1 || historyIndex <= 0) return;
+  
+  // Move back in history
+  historyIndex--;
+  const snapshot = moveHistory[historyIndex];
+  
+  // Decrement move count in Challenge Mode
+  if (gameMode === 'challenge' && challengeMoveCount > 0) {
+    challengeMoveCount--;
+    updateMoveCount();
+  }
+  
+  restoreSnapshot(snapshot);
+  updateUndoRedoButtons();
+}
+
+/**
+ * Redo the next move
+ */
+function redo() {
+  // Can't redo if we're at the last state
+  if (historyIndex >= moveHistory.length - 1) return;
+  
+  // Move forward in history
+  historyIndex++;
+  const snapshot = moveHistory[historyIndex];
+  
+  // Increment move count in Challenge Mode
+  if (gameMode === 'challenge') {
+    challengeMoveCount++;
+    updateMoveCount();
+  }
+  
+  restoreSnapshot(snapshot);
+  updateUndoRedoButtons();
+}
+
+/**
+ * Clear undo/redo history
+ *
+ * IMPORTANT: After clearing history, you must capture the current state
+ * as the new initial state (history[0]) by calling captureHistorySnapshot().
+ * This is critical for undo/redo to work correctly.
+ */
+function clearHistory() {
+  moveHistory = [];
+  historyIndex = -1;
+  updateUndoRedoButtons();
+}
+
+/**
+ * Update undo/redo button states
+ */
+function updateUndoRedoButtons() {
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < moveHistory.length - 1;
+  
+  // Disable if challenge is solved or timer is paused
+  const disabled = (gameMode === 'challenge' && (challengeSolved || timerPaused));
+  
+  undoBtn.disabled = !canUndo || disabled;
+  redoBtn.disabled = !canRedo || disabled;
+}
+
+// ============================================================================
 // INITIALIZATION FUNCTIONS
 // ============================================================================
 
@@ -564,6 +716,8 @@ function switchBoard(boardSlug) {
   
   // Apply board size (handles both auto-fit and manual scaling)
   applyBoardSize();
+  
+  // Note: resetState() already calls clearHistory()
 }
 
 /**
@@ -577,6 +731,10 @@ function resetState() {
 
   buildGridFromState();
   renderAll();
+  clearHistory();
+  
+  // Capture initial solved state
+  captureHistorySnapshot();
 }
 
 function resetGapIdentities() {
@@ -631,6 +789,7 @@ function resetGapIdentities() {
   // Update DOM to reflect new gap assignments
   updatePieceDOMForGapChangesImpl(getState());
   renderAll();
+  clearHistory();
 }
 
 
@@ -648,6 +807,7 @@ function randomizeGapIdentities() {
   updatePieceDOMForGapChangesImpl(getState());
   buildGridFromState();
   renderAll();
+  clearHistory();
 }
 
 // ============================================================================
@@ -675,6 +835,8 @@ function updateUIForMode() {
     challengeInfo.style.display = 'none';
     resetBtn.textContent = 'Reset';
   }
+  // Update undo/redo button states
+  updateUndoRedoButtons();
 }
 
 function updateMoveCount() {
@@ -897,6 +1059,11 @@ async function startChallenge(seed, steps, boardSlug = null, gapConfigIndex = 0,
   buildGridFromState();
   renderAll();
   
+  // IMPORTANT: Capture the shuffled state as the initial state for undo/redo
+  // This ensures undoing goes back to the shuffled state, not the solved state
+  clearHistory();
+  captureHistorySnapshot();
+  
   // Start timer after shuffle completes
   startTimer();
 }
@@ -975,7 +1142,11 @@ function getState() {
     incrementMoveCount: () => {
       challengeMoveCount++;
       updateMoveCount();
-    }
+    },
+    // History functions
+    captureHistorySnapshot: () => captureHistorySnapshot(),
+    clearHistory: () => clearHistory(),
+    updateUndoRedoButtons: () => updateUndoRedoButtons()
   };
 }
 
@@ -1286,7 +1457,23 @@ resetBtn.addEventListener('click', () => {
   }
 });
 
-shuffleBtn.addEventListener('click', () => shuffle(250, null, false));
+undoBtn.addEventListener('click', () => {
+  undo();
+  boardEl.focus();
+});
+
+redoBtn.addEventListener('click', () => {
+  redo();
+  boardEl.focus();
+});
+
+shuffleBtn.addEventListener('click', async () => {
+  clearHistory();
+  await shuffle(250, null, false);
+  // IMPORTANT: Capture the shuffled state as the initial state for undo/redo
+  // This ensures undoing goes back to the shuffled state, not the pre-shuffle state
+  captureHistorySnapshot();
+});
 
 giveUpBtn.addEventListener('click', () => {
   switchToFreePlay();

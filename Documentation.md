@@ -163,6 +163,9 @@ Challenge URLs include:
 - **Spacebar**: Toggle between gaps
 - **Arrow Keys** (↑↓←→): Slide adjacent piece into selected gap
 - **WASD**: Alternative arrow key controls
+- **Ctrl+Z** (or Cmd+Z on Mac): Undo last move
+- **Ctrl+Y** (or Cmd+Y on Mac): Redo next move
+- **Ctrl+Shift+Z** (or Cmd+Shift+Z on Mac): Redo next move (alternative)
 
 #### Mouse Controls
 - **Left Click on Piece**: Move piece into adjacent gap
@@ -178,6 +181,8 @@ Challenge URLs include:
 - **Edit Board Button**: Change board configuration (Free Play only)
 - **New Challenge Button**: Start challenge with custom or random seed
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
+- **Undo Button**: Undo the last move (up to 1000 moves)
+- **Redo Button**: Redo the next move after undoing
 - **Display Button** (⚙): Opens display settings dialog
 - **Help Button** (?): Opens controls reference dialog
 
@@ -346,6 +351,8 @@ challengeWrapHorizontal  // Horizontal wrapping in Challenge
 challengeWrapVertical    // Vertical wrapping in Challenge
 autoFitEnabled       // Auto-scale mode flag
 boardSizeScale       // Board size percentage (50-200%)
+moveHistory          // Array of move history snapshots (max 1000)
+historyIndex         // Current position in history (-1 = no history)
 ```
 
 #### Grid Cell Format
@@ -478,6 +485,29 @@ For screens ≤600px wide:
 - Contains OK button
 
 ## Key Implementation Details
+
+### Undo/Redo System
+- **History Limit**: 1000 moves (controlled by `MAX_HISTORY_SIZE` constant in [`puzzle.js`](puzzle.js))
+- **Snapshot Storage**: Each snapshot stores piece positions (id, x, y, selected) - move count NOT stored
+- **History Capture**: Automatically captured AFTER each move in [`tryMove()`](moves.js) (all 6 return points)
+- **History Clearing**: Cleared on board changes, resets, gap randomization
+- **Initial State Capture**: Critical pattern after clearing history:
+  - **Free Play Reset**: [`resetState()`](puzzle.js) captures solved state as history[0]
+  - **Free Play Shuffle**: Shuffle button handler captures shuffled state as history[0]
+  - **Challenge Mode**: [`startChallenge()`](puzzle.js) captures shuffled challenge state as history[0]
+- **Button States**: Undo/redo buttons automatically enabled/disabled based on history availability
+- **Challenge Mode Behavior**:
+  - Undo decrements move counter by 1
+  - Redo increments move counter by 1
+  - Timer continues running (not affected by undo/redo)
+  - Buttons disabled when challenge solved or timer paused
+- **Keyboard Shortcuts**: Ctrl+Z (undo), Ctrl+Y and Ctrl+Shift+Z (redo)
+- **Implementation**: Uses array-based history with index pointer for efficient undo/redo
+
+**CRITICAL**: After calling `clearHistory()`, you MUST call `captureHistorySnapshot()` to establish the initial state (history[0]). Without this, the first move cannot be undone. This pattern is used in:
+- [`resetState()`](puzzle.js) - Captures solved state
+- [`startChallenge()`](puzzle.js) - Captures shuffled state after shuffle completes
+- Shuffle button handler - Captures shuffled state after shuffle completes
 
 ### Unified Piece System
 - All game objects in single `pieces[]` array

@@ -1030,6 +1030,27 @@ function handlePointerEnd(state, e) {
  * @param {Event} e - Keyboard event
  */
 function handleKeyDown(state, e) {
+  // Undo/Redo keyboard shortcuts
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+    e.preventDefault();
+    // Get undo function from global scope via document
+    const undoBtn = document.getElementById('undoBtn');
+    if (undoBtn && !undoBtn.disabled) {
+      undoBtn.click();
+    }
+    return;
+  }
+  
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+    e.preventDefault();
+    // Get redo function from global scope via document
+    const redoBtn = document.getElementById('redoBtn');
+    if (redoBtn && !redoBtn.disabled) {
+      redoBtn.click();
+    }
+    return;
+  }
+  
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();
     // Prevent gap switching if challenge is solved or timer is paused
