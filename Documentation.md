@@ -34,8 +34,6 @@ const boardConfig = {
     secondary: 'darkworld.png'  // For horizontal/vertical modes
   },
   largePieces: [{x, y}, ...],   // Large piece top-left corners
-  wrapHorizontal: false,         // Enable horizontal wrapping
-  wrapVertical: false,           // Enable vertical wrapping
   gapConfigurations: [           // Available gap configurations
     {
       name: "2 small gaps (bottom right)",
@@ -326,8 +324,6 @@ boardConfig          // Object defining board layout
   .width             // Board width in tiles
   .height            // Board height in tiles
   .largePieces[]     // Array of large piece top-left corners
-  .wrapHorizontal    // Enable horizontal wrapping
-  .wrapVertical      // Enable vertical wrapping
   .gapConfigurations[] // Array of gap configuration options
 ```
 

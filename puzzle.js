@@ -56,13 +56,17 @@ const defaultBoard = {
     {x: 0, y: 3}, {x: 3, y: 3}, {x: 6, y: 3},
     {x: 0, y: 6}, {x: 5, y: 6}
   ],
-  wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false,    // Enable vertical wrapping
   gapConfigurations: [    // Available gap configurations for this board
     {
       name: "2 small gaps (bottom right)",
       gaps: [
         {x: 7, y: 6},
+        {x: 7, y: 7}
+      ]
+    },
+    {
+      name: "1 small gap (bottom right)",
+      gaps: [
         {x: 7, y: 7}
       ]
     },
@@ -92,13 +96,17 @@ const horizontalBoard = {
     {x: 8, y: 3}, {x: 11, y: 3}, {x: 14, y: 3},
     {x: 8, y: 6}, {x: 13, y: 6}
   ],
-  wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false,    // Enable vertical wrapping
   gapConfigurations: [    // Available gap configurations for this board
     {
       name: "2 small gaps (bottom right)",
       gaps: [
         {x: 15, y: 6},
+        {x: 15, y: 7}
+      ]
+    },
+    {
+      name: "1 small gap (bottom right)",
+      gaps: [
         {x: 15, y: 7}
       ]
     },
@@ -128,13 +136,17 @@ const verticalBoard = {
     {x: 0, y: 11}, {x: 3, y: 11}, {x: 6, y: 11},
     {x: 0, y: 14}, {x: 5, y: 14}
   ],
-  wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false,    // Enable vertical wrapping
   gapConfigurations: [    // Available gap configurations for this board
     {
       name: "2 small gaps (bottom right)",
       gaps: [
         {x: 7, y: 14},
+        {x: 7, y: 15}
+      ]
+    },
+    {
+      name: "1 small gap (bottom right)",
+      gaps: [
         {x: 7, y: 15}
       ]
     },
@@ -155,13 +167,18 @@ const smallPiecesBoard = {
     primary: 'lightworld.png'  // Single image for entire board
   },
   largePieces: [],    // No large pieces - all tiles are 1×1
-  wrapHorizontal: false,  // Enable horizontal wrapping
-  wrapVertical: false,    // Enable vertical wrapping
   gapConfigurations: [    // Available gap configurations for this board
     {
       name: "1 small gap (bottom right)",
       gaps: [
         {x: 7, y: 7}  // Single small gap in bottom right corner
+      ]
+    },
+    {
+      name: "2 small gaps (bottom right)",
+      gaps: [
+        {x: 7, y: 6},
+        {x: 7, y: 7}
       ]
     }
   ]
