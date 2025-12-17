@@ -21,7 +21,8 @@ The game supports multiple board configurations with different layouts and backg
 1. **Default Board** - Slug: `'default'` - 8×8 grid, single image mode
 2. **Horizontal Board** - Slug: `'horizontal'` - 16×8 grid, two images side by side
 3. **Vertical Board** - Slug: `'vertical'` - 8×16 grid, two images stacked vertically
-4. **Classic Board** - Slug: `'classic'` - 8×8 grid, all 1×1 pieces, single gap
+4. **Nine Large Pieces Board** - Slug: `'ninelargepieces'` - 8×8 grid, single image mode
+5. **Classic Board** - Slug: `'classic'` - 8×8 grid, all 1×1 pieces
 
 #### Board Configuration Structure
 ```javascript
