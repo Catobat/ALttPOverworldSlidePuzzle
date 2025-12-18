@@ -194,6 +194,39 @@ const extraLargePieceBoard = {
   ]
 };
 
+const singleLargePieceBoard = {
+  width: 8,           // Board width in tiles
+  height: 8,          // Board height in tiles
+  imageMode: 'single', // 'single', 'horizontal', or 'vertical'
+  images: {
+    primary: 'lightworld.png'  // Single image for entire board
+  },
+  largePieces: [      // Large piece top-left corners (array of {x, y})
+    {x: 3, y: 3}
+  ],
+  gapConfigurations: [    // Available gap configurations for this board
+    {
+      name: "2 small gaps (bottom right)",
+      gaps: [
+        {x: 7, y: 6},
+        {x: 7, y: 7}
+      ]
+    },
+    {
+      name: "1 small gap (bottom right)",
+      gaps: [
+        {x: 7, y: 7}
+      ]
+    },
+    {
+      name: "1 large gap (center)",
+      gaps: [
+        {x: 3, y: 3}  // This position matches a large piece, so it becomes a large gap
+      ]
+    }
+  ]
+};
+
 const smallPiecesBoard = {
   width: 8,           // Board width in tiles
   height: 8,          // Board height in tiles
@@ -225,6 +258,7 @@ const boardRegistry = {
   'horizontal': horizontalBoard,
   'vertical': verticalBoard,
   'ninelargepieces': extraLargePieceBoard,
+  'singlelargepiece': singleLargePieceBoard,
   'classic': smallPiecesBoard
 };
 
