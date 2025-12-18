@@ -712,7 +712,19 @@ function initTiles() {
 }
 
 function buildGridFromState() {
-  grid = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(null));
+  // Clear existing grid in-place instead of creating new array
+  // This ensures state.grid reference remains valid
+  if (!grid || grid.length !== boardConfig.height) {
+    // Initialize grid if it doesn't exist or has wrong dimensions
+    grid = [...Array(boardConfig.height)].map(()=>Array(boardConfig.width).fill(null));
+  } else {
+    // Clear existing grid in-place
+    for (let y = 0; y < boardConfig.height; y++) {
+      for (let x = 0; x < boardConfig.width; x++) {
+        grid[y][x] = null;
+      }
+    }
+  }
   
   // Create a temporary state object for normalizeCoords
   const tempState = {
@@ -1108,9 +1120,9 @@ async function startChallenge(seed, steps, boardSlug = null, gapConfigIndex = 0,
   // Then shuffle with the challenge seed and randomize flag
   await shuffle(steps, seed, randomizeGaps);
   
+  // Update DOM to reflect any gap changes from randomization
+  // Note: buildGridFromState() and renderAll() are already called inside shuffle()
   updatePieceDOMForGapChangesImpl(getState());
-  buildGridFromState();
-  renderAll();
   
   // IMPORTANT: Capture the shuffled state as the initial state for undo/redo
   // This ensures undoing goes back to the shuffled state, not the solved state

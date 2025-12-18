@@ -296,6 +296,8 @@ export async function shuffle(state, steps, seed = null, randomizeGaps = false) 
   // If randomizeGaps is enabled, use the shared gap randomization function
   if (randomizeGaps) {
     performGapRandomization(state, randomInt);
+    // CRITICAL: Rebuild grid after gap randomization
+    state.buildGridFromState();
   }
   
   let lastMove = null; // Remember last move to avoid immediate reversal

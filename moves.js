@@ -155,11 +155,8 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
   fromY = wrappedFrom.y;
   
   // Check bounds (with wrapping, coordinates should always be valid after normalization)
-  if (!state.wrapHorizontal && !state.wrapVertical) {
-    // No wrapping: use original boundary check
-    if (fromX < 0 || fromX >= state.boardConfig.width || fromY < 0 || fromY >= state.boardConfig.height) return false;
-  }
-
+  if (fromX < 0 || fromX >= state.boardConfig.width || fromY < 0 || fromY >= state.boardConfig.height) return false;
+  
   const sourceCell = state.grid[fromY][fromX];
   if (!sourceCell) return false;
   
