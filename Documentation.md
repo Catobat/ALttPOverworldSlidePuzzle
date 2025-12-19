@@ -179,7 +179,7 @@ Challenge URLs include:
 - **Reset Button**: Return to solved state (Free Play) or recreate challenge (Challenge Mode)
 - **Shuffle Button**: Randomize board with 250 valid moves (Free Play only)
 - **Edit Board Button**: Change board configuration (Free Play only)
-- **New Challenge Button**: Start challenge with custom or random seed
+- **New Challenge / Other Challenge Button**: Start challenge with custom or random seed (blue in Free Play or when challenge completed; text changes to "Other Challenge" in Challenge Mode)
 - **Give Up Button**: Return to Free Play mode (Challenge Mode only)
 - **Undo Button**: Undo the last move (up to 1000 moves)
 - **Redo Button**: Redo the next move after undoing
@@ -312,6 +312,7 @@ The game has two distinct modes:
   - Can be paused (disables moves, blurs board)
   - Can be hidden (continues running in background)
   - Stops when puzzle solved
+  - **Modal Auto-Pause**: When a modal dialog (Help, Display Settings, or New Challenge) opens during an active challenge, the timer automatically pauses and the board blurs. When the modal closes, the timer resumes only if it was running before the modal opened. If the timer was already manually paused, it remains paused after the modal closes.
 - **Win Condition**:
   - Congratulations dialog appears
   - All moves locked
@@ -443,6 +444,17 @@ All dialogs support dismissal via:
 - Clicking outside dialog
 - Keyboard shortcuts (Enter/Escape)
 - Close/cancel button
+
+### Modal Auto-Pause Behavior
+During an active, uncompleted challenge:
+- Opening Help, Display Settings, or New Challenge dialogs automatically pauses the timer
+- The board blurs (same visual effect as manual pause)
+- Moves are disabled while modal is open
+- Closing the modal restores the previous timer state:
+  - If timer was running before modal opened → resumes
+  - If timer was already paused → stays paused
+  - When starting a new challenge, the pause state is cleared
+- This behavior does not interfere with manual pause button functionality
 
 ### Modal Dialog Responsive Behavior
 For screens ≤600px wide:

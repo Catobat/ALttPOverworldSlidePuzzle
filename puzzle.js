@@ -360,6 +360,7 @@ let timerElapsedTime = 0;
 let timerInterval = null;
 let timerPaused = false;
 let timerHidden = false;
+let pausedByModal = false; // Track if pause was triggered by modal opening
 
 // Display settings state
 let autoFitEnabled = false;
@@ -926,6 +927,14 @@ function updateUIForMode() {
     resetBtn.textContent = 'Restart';
     // Update Give Up button text based on solved state
     giveUpBtn.textContent = challengeSolved ? 'Free Play' : 'Give Up';
+    // Update Challenge button text and styling
+    challengeBtn.textContent = 'Other Challenge';
+    // Add blue styling only when challenge is completed
+    if (challengeSolved) {
+      challengeBtn.classList.add('btn-primary');
+    } else {
+      challengeBtn.classList.remove('btn-primary');
+    }
   } else {
     // Free Play mode: show Shuffle and Settings, hide Give Up, hide challenge info
     shuffleBtn.style.display = 'inline-block';
@@ -933,6 +942,9 @@ function updateUIForMode() {
     giveUpBtn.style.display = 'none';
     challengeInfo.style.display = 'none';
     resetBtn.textContent = 'Reset';
+    // Update Challenge button text and styling for Free Play
+    challengeBtn.textContent = 'New Challenge';
+    challengeBtn.classList.add('btn-primary');
   }
   // Update undo/redo button states
   updateUndoRedoButtons();
@@ -1021,6 +1033,36 @@ function resumeTimer() {
   boardEl.focus();
 }
 
+/**
+ * Pause timer when modal opens (only if challenge active and not already paused)
+ * Does not change pause button UI - only pauses timer and blurs board
+ */
+function pauseForModal() {
+  if (gameMode === 'challenge' && !challengeSolved && !timerPaused) {
+    pausedByModal = true;
+    // Pause timer without changing button UI
+    timerPaused = true;
+    const currentTime = Date.now();
+    timerElapsedTime += (currentTime - timerStartTime);
+    boardEl.classList.add('paused');
+  }
+}
+
+/**
+ * Resume timer when modal closes (only if pause was triggered by modal)
+ * Does not change pause button UI - only resumes timer and removes blur
+ */
+function resumeFromModal() {
+  if (pausedByModal) {
+    pausedByModal = false;
+    // Resume timer without changing button UI
+    timerPaused = false;
+    timerStartTime = Date.now();
+    boardEl.classList.remove('paused');
+    boardEl.focus();
+  }
+}
+
 function stopTimer() {
   if (timerInterval) {
     clearInterval(timerInterval);
@@ -1030,6 +1072,7 @@ function stopTimer() {
   timerElapsedTime = 0;
   timerPaused = false;
   timerHidden = false;
+  pausedByModal = false; // Reset modal pause flag when timer stops
   boardEl.classList.remove('paused');
   challengeTimerDisplay.textContent = '0:00';
   challengeTimerDisplay.style.display = '';
@@ -1101,6 +1144,7 @@ function switchToFreePlay() {
   challengeWrapVertical = false;
   challengeMoveCount = 0;
   challengeSolved = false;
+  pausedByModal = false; // Reset modal pause flag when switching to free play
   stopTimer();
   updateUIForMode();
   updateURL(); // Update URL when switching to Free Play
@@ -1124,6 +1168,7 @@ async function startChallenge(seed, steps, boardSlug = null, gapConfigIndex = 0,
   challengeWrapVertical = wrapV;
   challengeMoveCount = 0;
   challengeSolved = false;
+  pausedByModal = false; // Reset modal pause flag when starting new challenge
   
   // Apply wrapping settings
   wrapHorizontal = wrapH;
@@ -1729,6 +1774,7 @@ wrapVerticalCheckbox.addEventListener('change', () => {
 // ============================================================================
 
 challengeBtn.addEventListener('click', () => {
+  pauseForModal(); // Pause timer if challenge is active
   // Set current board in dropdown
   challengeBoardSelect.value = currentBoardSlug;
   // Populate gap configuration dropdown
@@ -1762,6 +1808,7 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 
 challengeCancelBtn.addEventListener('click', () => {
   challengeDialog.style.display = 'none';
+  resumeFromModal(); // Resume timer if it was paused by modal
   boardEl.focus();
 });
 
@@ -1786,6 +1833,7 @@ challengeStartBtn.addEventListener('click', async () => {
   
   // Close dialog
   challengeDialog.style.display = 'none';
+  resumeFromModal(); // Resume timer if it was paused by modal (will be cleared when new challenge starts)
   
   // Determine seed: use provided value or generate random
   let seed;
@@ -1838,6 +1886,7 @@ congratsDialog.addEventListener('keydown', (e) => {
 // ============================================================================
 
 displayBtn.addEventListener('click', () => {
+  pauseForModal(); // Pause timer if challenge is active
   // Set current values in dialog
   const currentTheme = localStorage.getItem('theme') || 'auto';
   themeSelect.value = currentTheme;
@@ -1853,6 +1902,7 @@ displayBtn.addEventListener('click', () => {
 
 displayCloseBtn.addEventListener('click', () => {
   displayDialog.style.display = 'none';
+  resumeFromModal(); // Resume timer if it was paused by modal
   boardEl.focus();
 });
 
@@ -1946,12 +1996,14 @@ displayDialog.addEventListener('mousedown', (e) => {
 // ============================================================================
 
 helpBtn.addEventListener('click', () => {
+  pauseForModal(); // Pause timer if challenge is active
   helpDialog.style.display = 'flex';
   helpCloseBtn.focus();
 });
 
 helpCloseBtn.addEventListener('click', () => {
   helpDialog.style.display = 'none';
+  resumeFromModal(); // Resume timer if it was paused by modal
   boardEl.focus();
 });
 
@@ -2119,6 +2171,9 @@ applyBoardSize();
 
 // Initialize game state
 resetState();
+
+// Update UI for initial mode (ensures button styling is correct on page load)
+updateUIForMode();
 
 // Initialize input handlers - pass getState function so handlers always get fresh state
 initializeInputHandlers(getState);
