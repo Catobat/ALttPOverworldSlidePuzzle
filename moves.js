@@ -103,6 +103,397 @@ export function calculateLargePieceDestination(state, piece, dx, dy) {
 }
 
 /**
+ * Clear multiple grid cells
+ * @param {Object} state - Game state object
+ * @param {Array} cells - Array of {x, y} coordinates to clear
+ */
+function clearGridCells(state, cells) {
+  for (const cell of cells) {
+    state.grid[cell.y][cell.x] = null;
+  }
+}
+
+/**
+ * Set a large piece/gap in the grid (2x2 cells)
+ * @param {Object} state - Game state object
+ * @param {Object} piece - Piece or gap object with x, y, id properties
+ * @param {boolean} isGap - Whether this is a gap or piece
+ */
+function setLargePieceGrid(state, piece, isGap) {
+  for (let dy = 0; dy < 2; dy++) {
+    for (let dx = 0; dx < 2; dx++) {
+      const pos = normalizeCoords(state, piece.x + dx, piece.y + dy);
+      state.grid[pos.y][pos.x] = {
+        isGap,
+        isLarge: true,
+        id: piece.id,
+        ox: dx,
+        oy: dy
+      };
+    }
+  }
+}
+
+/**
+ * Get all 4 cells occupied by a large piece/gap
+ * @param {Object} state - Game state object
+ * @param {Object} piece - Large piece or gap object
+ * @returns {Array} Array of {x, y} coordinates
+ */
+function getLargePieceCells(state, piece) {
+  const cells = [];
+  for (let dy = 0; dy < 2; dy++) {
+    for (let dx = 0; dx < 2; dx++) {
+      cells.push(normalizeCoords(state, piece.x + dx, piece.y + dy));
+    }
+  }
+  return cells;
+}
+
+/**
+ * Finalize a move by handling rendering, history, and win conditions
+ * @param {Object} state - Game state object
+ * @param {boolean} skipRender - Whether to skip rendering
+ * @param {boolean} dryRun - Whether this is a dry run
+ */
+function finalizeMove(state, skipRender, dryRun) {
+  if (!skipRender) state.renderAll();
+  
+  if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
+    state.captureHistorySnapshot();
+  }
+  
+  if (state.gameMode === 'challenge' && !state.isShuffling) {
+    state.incrementMoveCount();
+    if (state.checkWinCondition()) {
+      state.handleWin();
+    }
+  }
+}
+
+/**
+ * Execute a swap between two same-sized entities (gaps or pieces)
+ * @param {Object} state - Game state object
+ * @param {Object} entity1 - First entity to swap
+ * @param {Object} entity2 - Second entity to swap
+ * @param {boolean} skipRender - Whether to skip rendering
+ * @param {boolean} dryRun - Whether this is a dry run
+ * @returns {boolean} True if successful
+ */
+function executeSwap(state, entity1, entity2, skipRender, dryRun) {
+  if (dryRun) return true;
+  
+  // Swap positions
+  [entity1.x, entity1.y, entity2.x, entity2.y] =
+    [entity2.x, entity2.y, entity1.x, entity1.y];
+  
+  // Update grid based on size
+  if (entity1.isLarge) {
+    // Both are large - clear old positions and set new ones
+    clearGridCells(state, getLargePieceCells(state, { x: entity2.x, y: entity2.y, id: entity2.id }));
+    clearGridCells(state, getLargePieceCells(state, { x: entity1.x, y: entity1.y, id: entity1.id }));
+    setLargePieceGrid(state, entity1, entity1.isGap);
+    setLargePieceGrid(state, entity2, entity2.isGap);
+  } else {
+    // Both are small - just swap the two cells
+    state.grid[entity1.y][entity1.x] = {
+      isGap: entity1.isGap,
+      isLarge: false,
+      id: entity1.id
+    };
+    state.grid[entity2.y][entity2.x] = {
+      isGap: entity2.isGap,
+      isLarge: false,
+      id: entity2.id
+    };
+  }
+  
+  finalizeMove(state, skipRender, dryRun);
+  return true;
+}
+
+/**
+ * Calculate cells for multi-piece movement (large gap with 2 small entities)
+ * @param {Object} state - Game state object
+ * @param {Object} largeGap - The large gap
+ * @param {string} dir - Direction of movement
+ * @returns {Array} Array of {x, y} coordinates to check
+ */
+function calculateCheckCells(state, largeGap, dir) {
+  let checkCells = [];
+  
+  if (dir === 'left' || dir === 'right') {
+    // Horizontal: check for 2 vertically aligned cells
+    if (dir === 'right') {
+      // dir='right' means look LEFT (at x-1)
+      const cell1 = normalizeCoords(state, largeGap.x - 1, largeGap.y);
+      const cell2 = normalizeCoords(state, largeGap.x - 1, largeGap.y + 1);
+      checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+    } else {
+      // dir='left' means look RIGHT (at x+2)
+      const cell1 = normalizeCoords(state, largeGap.x + 2, largeGap.y);
+      const cell2 = normalizeCoords(state, largeGap.x + 2, largeGap.y + 1);
+      checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+    }
+  } else if (dir === 'up' || dir === 'down') {
+    // Vertical: check for 2 horizontally aligned cells
+    if (dir === 'down') {
+      // dir='down' means look ABOVE (at y-1)
+      const cell1 = normalizeCoords(state, largeGap.x, largeGap.y - 1);
+      const cell2 = normalizeCoords(state, largeGap.x + 1, largeGap.y - 1);
+      checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+    } else {
+      // dir='up' means look BELOW (at y+2)
+      const cell1 = normalizeCoords(state, largeGap.x, largeGap.y + 2);
+      const cell2 = normalizeCoords(state, largeGap.x + 1, largeGap.y + 2);
+      checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+    }
+  }
+  
+  return checkCells;
+}
+
+/**
+ * Handle large gap moving into 2 small pieces/gaps
+ * @param {Object} state - Game state object
+ * @param {Object} largeGap - The large gap
+ * @param {string} dir - Direction of movement
+ * @param {boolean} skipRender - Whether to skip rendering
+ * @param {boolean} dryRun - Whether this is a dry run
+ * @returns {boolean} True if successful
+ */
+function handleLargeGapMovement(state, largeGap, dir, skipRender, dryRun) {
+  // Calculate direction vector for WHERE THE GAP WOULD MOVE
+  let dx = 0, dy = 0;
+  if (dir === 'up') { dy = 1; }
+  if (dir === 'down') { dy = -1; }
+  if (dir === 'left') { dx = 1; }
+  if (dir === 'right') { dx = -1; }
+  
+  // Check boundary constraints
+  if (!state.wrapHorizontal) {
+    if (dx === 1 && largeGap.x + 2 >= state.boardConfig.width) return false;
+    if (dx === -1 && largeGap.x - 1 < 0) return false;
+  }
+  if (!state.wrapVertical) {
+    if (dy === 1 && largeGap.y + 2 >= state.boardConfig.height) return false;
+    if (dy === -1 && largeGap.y - 1 < 0) return false;
+  }
+  
+  // Calculate which cells to check
+  const destCells = calculateCheckCells(state, largeGap, dir);
+  
+  if (destCells.length !== 2) return false;
+  
+  const dest1Cell = state.grid[destCells[0].y]?.[destCells[0].x];
+  const dest2Cell = state.grid[destCells[1].y]?.[destCells[1].x];
+  
+  if (!dest1Cell || !dest2Cell) return false;
+  
+  // Check if destination is a large piece (swap case)
+  if (dest1Cell.isLarge && dest2Cell.isLarge && !dest1Cell.isGap) {
+    const largePiece = state.pieceById.get(dest1Cell.id);
+    
+    // Verify all checked cells belong to the same large piece
+    const allSamePiece = destCells.every(c => {
+      const cell = state.grid[c.y]?.[c.x];
+      return cell?.isLarge && !cell?.isGap && cell.id === largePiece.id;
+    });
+    
+    if (allSamePiece) {
+      return executeSwap(state, largeGap, largePiece, skipRender, dryRun);
+    }
+  }
+  
+  // Otherwise, handle moving into 2 small pieces/gaps
+  if (dest1Cell.isLarge || dest2Cell.isLarge) {
+    return false;
+  }
+  
+  // Get the pieces/gaps at destination
+  const piece1 = state.pieceById.get(dest1Cell.id);
+  const piece2 = state.pieceById.get(dest2Cell.id);
+  
+  if (!piece1 || !piece2) return false;
+  
+  // Calculate target cells (where pieces should end up - far side of gap)
+  let targetCells = [];
+  if (dir === 'left' || dir === 'right') {
+    if (dir === 'right') {
+      targetCells = [
+        normalizeCoords(state, largeGap.x + 1, largeGap.y),
+        normalizeCoords(state, largeGap.x + 1, largeGap.y + 1)
+      ];
+    } else {
+      targetCells = [
+        normalizeCoords(state, largeGap.x, largeGap.y),
+        normalizeCoords(state, largeGap.x, largeGap.y + 1)
+      ];
+    }
+    // Map pieces by y coordinate
+    var map = [
+      { piece: piece1, target: targetCells.find(t => t.y === piece1.y) },
+      { piece: piece2, target: targetCells.find(t => t.y === piece2.y) }
+    ];
+  } else {
+    if (dir === 'down') {
+      targetCells = [
+        normalizeCoords(state, largeGap.x, largeGap.y + 1),
+        normalizeCoords(state, largeGap.x + 1, largeGap.y + 1)
+      ];
+    } else {
+      targetCells = [
+        normalizeCoords(state, largeGap.x, largeGap.y),
+        normalizeCoords(state, largeGap.x + 1, largeGap.y)
+      ];
+    }
+    // Map pieces by x coordinate
+    var map = [
+      { piece: piece1, target: targetCells.find(t => t.x === piece1.x) },
+      { piece: piece2, target: targetCells.find(t => t.x === piece2.x) }
+    ];
+  }
+  
+  if (!map[0].target || !map[1].target) return false;
+  
+  if (dryRun) return true;
+  
+  // Move the large gap
+  const oldGapX = largeGap.x;
+  const oldGapY = largeGap.y;
+  const newGapPos = normalizeCoords(state, largeGap.x + dx, largeGap.y + dy);
+  largeGap.x = newGapPos.x;
+  largeGap.y = newGapPos.y;
+  
+  // Move each piece/gap to its target
+  for (const {piece, target} of map) {
+    piece.x = target.x;
+    piece.y = target.y;
+  }
+  
+  // Update grid
+  clearGridCells(state, getLargePieceCells(state, { x: oldGapX, y: oldGapY, id: largeGap.id }));
+  setLargePieceGrid(state, largeGap, true);
+  
+  for (const {piece} of map) {
+    state.grid[piece.y][piece.x] = { isGap: piece.isGap, isLarge: false, id: piece.id };
+  }
+  
+  finalizeMove(state, skipRender, dryRun);
+  return true;
+}
+
+/**
+ * Handle 2 small pieces moving into a large gap
+ * @param {Object} state - Game state object
+ * @param {Object} largeGap - The large gap
+ * @param {Object} movingPiece - The piece being moved
+ * @param {number} fromX - Source X coordinate
+ * @param {number} fromY - Source Y coordinate
+ * @param {string} dir - Direction of movement
+ * @param {boolean} skipRender - Whether to skip rendering
+ * @param {boolean} dryRun - Whether this is a dry run
+ * @returns {boolean} True if successful
+ */
+function handleSmallPiecesIntoLargeGap(state, largeGap, movingPiece, fromX, fromY, dir, skipRender, dryRun) {
+  // Calculate direction vector
+  let dx = 0, dy = 0;
+  if (dir === 'up') { dy = -1; }
+  if (dir === 'down') { dy = 1; }
+  if (dir === 'left') { dx = -1; }
+  if (dir === 'right') { dx = 1; }
+  
+  // Find the other small piece that should move with this one
+  let otherPiecePos = null;
+  if (dx !== 0) {
+    // Horizontal: look for piece in same column, adjacent row
+    const above = normalizeCoords(state, fromX, fromY - 1);
+    const below = normalizeCoords(state, fromX, fromY + 1);
+    const aboveCell = state.grid[above.y]?.[above.x];
+    const belowCell = state.grid[below.y]?.[below.x];
+    
+    if (aboveCell && !aboveCell.isGap && !aboveCell.isLarge) {
+      otherPiecePos = above;
+    } else if (belowCell && !belowCell.isGap && !belowCell.isLarge) {
+      otherPiecePos = below;
+    }
+  } else if (dy !== 0) {
+    // Vertical: look for piece in same row, adjacent column
+    const left = normalizeCoords(state, fromX - 1, fromY);
+    const right = normalizeCoords(state, fromX + 1, fromY);
+    const leftCell = state.grid[left.y]?.[left.x];
+    const rightCell = state.grid[right.y]?.[right.x];
+    
+    if (leftCell && !leftCell.isGap && !leftCell.isLarge) {
+      otherPiecePos = left;
+    } else if (rightCell && !rightCell.isGap && !rightCell.isLarge) {
+      otherPiecePos = right;
+    }
+  }
+  
+  if (!otherPiecePos) return false;
+  
+  const otherPiece = state.pieceById.get(state.grid[otherPiecePos.y][otherPiecePos.x].id);
+  if (!otherPiece) return false;
+  
+  // Check if both pieces would move into the large gap's cells
+  const piece1NewPos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
+  const piece2NewPos = normalizeCoords(state, otherPiece.x + dx, otherPiece.y + dy);
+  
+  // Get all 4 cells of the large gap
+  const gapCells = [
+    normalizeCoords(state, largeGap.x, largeGap.y),
+    normalizeCoords(state, largeGap.x + 1, largeGap.y),
+    normalizeCoords(state, largeGap.x, largeGap.y + 1),
+    normalizeCoords(state, largeGap.x + 1, largeGap.y + 1)
+  ];
+  
+  // Check if both new positions are within the large gap
+  const piece1InGap = gapCells.some(c => c.x === piece1NewPos.x && c.y === piece1NewPos.y);
+  const piece2InGap = gapCells.some(c => c.x === piece2NewPos.x && c.y === piece2NewPos.y);
+  
+  if (!piece1InGap || !piece2InGap) return false;
+  
+  // The 2 cells they DON'T occupy become the new gap position
+  const freedCells = gapCells.filter(c =>
+    !(c.x === piece1NewPos.x && c.y === piece1NewPos.y) &&
+    !(c.x === piece2NewPos.x && c.y === piece2NewPos.y)
+  );
+  
+  if (freedCells.length !== 2) return false;
+  
+  if (dryRun) return true;
+  
+  // Move both pieces
+  movingPiece.x = piece1NewPos.x;
+  movingPiece.y = piece1NewPos.y;
+  otherPiece.x = piece2NewPos.x;
+  otherPiece.y = piece2NewPos.y;
+  
+  // Move large gap to freed cells
+  if (dx !== 0) {
+    largeGap.x = freedCells[0].x;
+    largeGap.y = Math.min(freedCells[0].y, freedCells[1].y);
+  } else {
+    largeGap.x = Math.min(freedCells[0].x, freedCells[1].x);
+    largeGap.y = freedCells[0].y;
+  }
+  
+  // Update grid
+  state.grid[fromY][fromX] = null;
+  state.grid[otherPiecePos.y][otherPiecePos.x] = null;
+  clearGridCells(state, gapCells);
+  
+  state.grid[movingPiece.y][movingPiece.x] = { isGap: false, isLarge: false, id: movingPiece.id };
+  state.grid[otherPiece.y][otherPiece.x] = { isGap: false, isLarge: false, id: otherPiece.id };
+  
+  setLargePieceGrid(state, largeGap, true);
+  
+  finalizeMove(state, skipRender, dryRun);
+  return true;
+}
+
+/**
  * Main movement function - attempts to move a piece into a gap
  * @param {Object} state - Game state object
  * @param {string} dir - Direction ('up'|'down'|'left'|'right')
@@ -163,482 +554,61 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
   // Determine if we should skip rendering (during shuffle in Challenge Mode)
   const skipRender = state.isShuffling && state.gameMode === 'challenge';
   
-  // Check if source is another gap (gap swap - small or large)
+  // CASE 1: Gap-to-gap swap (same size)
   if (sourceCell.isGap) {
     const otherGap = state.pieceById.get(sourceCell.id);
-    
-    // Safety check: ensure otherGap exists
     if (!otherGap) return false;
     
-    // Check if both gaps are the same size (both small or both large)
+    // Check if both gaps are the same size
     if (selectedGap.isLarge === otherGap.isLarge) {
-      // For large gaps, verify proper alignment by checking if the source cell
-      // is actually part of the other gap (not just adjacent to one cell)
+      // For large gaps, verify proper alignment
       if (selectedGap.isLarge) {
-        // Calculate which cells we're looking at for the other gap
-        let checkCells = [];
-        if (dir === 'left' || dir === 'right') {
-          // Horizontal: check for 2 vertically aligned cells
-          if (dir === 'right') {
-            // dir='right' means look LEFT (at x-1)
-            const cell1 = normalizeCoords(state, selectedGap.x - 1, selectedGap.y);
-            const cell2 = normalizeCoords(state, selectedGap.x - 1, selectedGap.y + 1);
-            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          } else {
-            // dir='left' means look RIGHT (at x+2)
-            const cell1 = normalizeCoords(state, selectedGap.x + 2, selectedGap.y);
-            const cell2 = normalizeCoords(state, selectedGap.x + 2, selectedGap.y + 1);
-            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          }
-        } else if (dir === 'up' || dir === 'down') {
-          // Vertical: check for 2 horizontally aligned cells
-          if (dir === 'down') {
-            // dir='down' means look ABOVE (at y-1)
-            const cell1 = normalizeCoords(state, selectedGap.x, selectedGap.y - 1);
-            const cell2 = normalizeCoords(state, selectedGap.x + 1, selectedGap.y - 1);
-            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          } else {
-            // dir='up' means look BELOW (at y+2)
-            const cell1 = normalizeCoords(state, selectedGap.x, selectedGap.y + 2);
-            const cell2 = normalizeCoords(state, selectedGap.x + 1, selectedGap.y + 2);
-            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-          }
-        }
-        
-        // Verify all checked cells belong to the same large gap
+        const checkCells = calculateCheckCells(state, selectedGap, dir);
         const allSameGap = checkCells.every(c => {
           const cell = state.grid[c.y]?.[c.x];
           return cell?.isGap && cell?.isLarge && cell.id === otherGap.id;
         });
-        
         if (!allSameGap) return false;
       }
       
-      // Valid move - return early if dry run
-      if (dryRun) return true;
-      
-      // Swap positions
-      [selectedGap.x, selectedGap.y, otherGap.x, otherGap.y] =
-        [otherGap.x, otherGap.y, selectedGap.x, selectedGap.y];
-      
-      if (selectedGap.isLarge) {
-        // Large gap swap: update all 4 cells for each gap
-        // Clear old positions
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dx = 0; dx < 2; dx++) {
-            const oldSelectedPos = normalizeCoords(state, otherGap.x + dx, otherGap.y + dy);
-            const oldOtherPos = normalizeCoords(state, selectedGap.x + dx, selectedGap.y + dy);
-            state.grid[oldSelectedPos.y][oldSelectedPos.x] = null;
-            state.grid[oldOtherPos.y][oldOtherPos.x] = null;
-          }
-        }
-        // Set new positions
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dx = 0; dx < 2; dx++) {
-            const newSelectedPos = normalizeCoords(state, selectedGap.x + dx, selectedGap.y + dy);
-            const newOtherPos = normalizeCoords(state, otherGap.x + dx, otherGap.y + dy);
-            state.grid[newSelectedPos.y][newSelectedPos.x] = { isGap: true, isLarge: true, id: selectedGap.id, ox: dx, oy: dy };
-            state.grid[newOtherPos.y][newOtherPos.x] = { isGap: true, isLarge: true, id: otherGap.id, ox: dx, oy: dy };
-          }
-        }
-      } else {
-        // Small gap swap: just swap the two cells
-        state.grid[selectedGap.y][selectedGap.x] = { isGap: true, isLarge: false, id: selectedGap.id };
-        state.grid[otherGap.y][otherGap.x] = { isGap: true, isLarge: false, id: otherGap.id };
-      }
-      
-      if (!skipRender) state.renderAll();
-      
-      // Capture history AFTER successful move (not during shuffle or dry-run)
-      if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
-        state.captureHistorySnapshot();
-      }
-      
-      if (state.gameMode === 'challenge' && !state.isShuffling) {
-        state.incrementMoveCount();
-        if (state.checkWinCondition()) {
-          state.handleWin();
-        }
-      }
-      return true;
+      return executeSwap(state, selectedGap, otherGap, skipRender, dryRun);
     }
-    // If gaps are different sizes, fall through to check other movement options
+    // If gaps are different sizes, fall through to other cases
   }
 
-  // Check if selected gap is large
+  // CASE 2: Large gap moving into 2 small pieces/gaps
   if (selectedGap.isLarge) {
-    // Large gap moving into 2 aligned small pieces/gaps
-    // Calculate direction vector for WHERE THE GAP WOULD MOVE
-    // Remember: dir is inverted - it specifies where to look for pieces, not where gap moves
-    // So we need to INVERT the direction for the gap's actual movement
-    let dx = 0, dy = 0;
-    if (dir === 'up') { dy = 1; }    // Look below (pieces move up), gap moves down
-    if (dir === 'down') { dy = -1; } // Look above (pieces move down), gap moves up
-    if (dir === 'left') { dx = 1; }  // Look right (pieces move left), gap moves right
-    if (dir === 'right') { dx = -1; } // Look left (pieces move right), gap moves left
-    
-    // Check if large gap can move in this direction (boundary check for 2×2)
-    // Without wrapping, the new position must fit within board bounds
-    if (!state.wrapHorizontal) {
-      if (dx === 1 && selectedGap.x + 2 >= state.boardConfig.width) return false;
-      if (dx === -1 && selectedGap.x - 1 < 0) return false;
-    }
-    if (!state.wrapVertical) {
-      if (dy === 1 && selectedGap.y + 2 >= state.boardConfig.height) return false;
-      if (dy === -1 && selectedGap.y - 1 < 0) return false;
-    }
-    
-    // Calculate which cells to check for pieces that would move into the gap
-    // dir parameter tells us where to LOOK for pieces (inverted semantics)
-    // dir='down' means look ABOVE (at y-1), pieces move down, gap moves up
-    // dir='up' means look BELOW (at y+2), pieces move up, gap moves down
-    let destCells = [];
-    if (dir === 'left' || dir === 'right') {
-      // Horizontal: check for 2 vertically aligned cells
-      if (dir === 'right') {
-        // dir='right' means look LEFT (at x-1)
-        const cell1 = normalizeCoords(state, selectedGap.x - 1, selectedGap.y);
-        const cell2 = normalizeCoords(state, selectedGap.x - 1, selectedGap.y + 1);
-        destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-      } else {
-        // dir='left' means look RIGHT (at x+2)
-        const cell1 = normalizeCoords(state, selectedGap.x + 2, selectedGap.y);
-        const cell2 = normalizeCoords(state, selectedGap.x + 2, selectedGap.y + 1);
-        destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-      }
-    } else if (dir === 'up' || dir === 'down') {
-      // Vertical: check for 2 horizontally aligned cells
-      if (dir === 'down') {
-        // dir='down' means look ABOVE (at y-1)
-        const cell1 = normalizeCoords(state, selectedGap.x, selectedGap.y - 1);
-        const cell2 = normalizeCoords(state, selectedGap.x + 1, selectedGap.y - 1);
-        destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-      } else {
-        // dir='up' means look BELOW (at y+2)
-        const cell1 = normalizeCoords(state, selectedGap.x, selectedGap.y + 2);
-        const cell2 = normalizeCoords(state, selectedGap.x + 1, selectedGap.y + 2);
-        destCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
-      }
-    }
-    
-    // Verify both destination cells exist and are small pieces or small gaps (not large pieces/gaps)
-    if (destCells.length === 2) {
-      const dest1Cell = state.grid[destCells[0].y]?.[destCells[0].x];
-      const dest2Cell = state.grid[destCells[1].y]?.[destCells[1].x];
-      
-      if (dest1Cell && dest2Cell &&
-          !dest1Cell.isLarge &&
-          !dest2Cell.isLarge) {
-        
-        // Get the pieces/gaps at destination
-        const piece1 = state.pieceById.get(dest1Cell.id);
-        const piece2 = state.pieceById.get(dest2Cell.id);
-        
-        if (piece1 && piece2) {
-          // Calculate freed cells (where the large gap currently is)
-          const freedCells = [
-            normalizeCoords(state, selectedGap.x, selectedGap.y),
-            normalizeCoords(state, selectedGap.x + 1, selectedGap.y),
-            normalizeCoords(state, selectedGap.x, selectedGap.y + 1),
-            normalizeCoords(state, selectedGap.x + 1, selectedGap.y + 1)
-          ];
-          
-          // Determine where each piece/gap should move
-          // The pieces should move THROUGH the gap to the far side
-          // The gap should move to where the pieces currently are
-          let map = [];
-          
-          // Calculate where pieces should end up (on the FAR side of the gap)
-          let targetCells = [];
-          if (dir === 'left' || dir === 'right') {
-            // Horizontal: pieces move through gap horizontally
-            if (dir === 'right') {
-              // Pieces move right, should end up at gap's right edge
-              targetCells = [
-                normalizeCoords(state, selectedGap.x + 1, selectedGap.y),
-                normalizeCoords(state, selectedGap.x + 1, selectedGap.y + 1)
-              ];
-            } else {
-              // Pieces move left, should end up at gap's left edge
-              targetCells = [
-                normalizeCoords(state, selectedGap.x, selectedGap.y),
-                normalizeCoords(state, selectedGap.x, selectedGap.y + 1)
-              ];
-            }
-            // Map pieces by y coordinate
-            map = [
-              { piece: piece1, target: targetCells.find(t => t.y === piece1.y) },
-              { piece: piece2, target: targetCells.find(t => t.y === piece2.y) }
-            ];
-          } else {
-            // Vertical: pieces move through gap vertically
-            if (dir === 'down') {
-              // Pieces move down, should end up at gap's bottom edge
-              targetCells = [
-                normalizeCoords(state, selectedGap.x, selectedGap.y + 1),
-                normalizeCoords(state, selectedGap.x + 1, selectedGap.y + 1)
-              ];
-            } else {
-              // Pieces move up, should end up at gap's top edge
-              targetCells = [
-                normalizeCoords(state, selectedGap.x, selectedGap.y),
-                normalizeCoords(state, selectedGap.x + 1, selectedGap.y)
-              ];
-            }
-            // Map pieces by x coordinate
-            map = [
-              { piece: piece1, target: targetCells.find(t => t.x === piece1.x) },
-              { piece: piece2, target: targetCells.find(t => t.x === piece2.x) }
-            ];
-          }
-          
-          if (map.length === 2 && map[0].target && map[1].target) {
-            // Valid move - return early if dry run
-            if (dryRun) return true;
-            
-            // Move the large gap in the direction it should actually move
-            const oldGapX = selectedGap.x;
-            const oldGapY = selectedGap.y;
-            // Use the corrected dx, dy which represent the gap's actual movement
-            const newGapPos = normalizeCoords(state, selectedGap.x + dx, selectedGap.y + dy);
-            selectedGap.x = newGapPos.x;
-            selectedGap.y = newGapPos.y;
-            
-            // Move each piece/gap to its mapped target cell
-            for (const {piece, target} of map) {
-              piece.x = target.x;
-              piece.y = target.y;
-            }
-            
-            // Update grid: clear old large gap position (4 cells)
-            for (let gy = 0; gy < 2; gy++) {
-              for (let gx = 0; gx < 2; gx++) {
-                const oldCell = normalizeCoords(state, oldGapX + gx, oldGapY + gy);
-                state.grid[oldCell.y][oldCell.x] = null;
-              }
-            }
-            
-            // Set new large gap position (4 cells)
-            for (let gy = 0; gy < 2; gy++) {
-              for (let gx = 0; gx < 2; gx++) {
-                const newCell = normalizeCoords(state, selectedGap.x + gx, selectedGap.y + gy);
-                state.grid[newCell.y][newCell.x] = {
-                  isGap: true,
-                  isLarge: true,
-                  id: selectedGap.id,
-                  ox: gx,
-                  oy: gy
-                };
-              }
-            }
-            
-            // Update moved pieces/gaps in grid
-            for (const {piece} of map) {
-              state.grid[piece.y][piece.x] = { isGap: piece.isGap, isLarge: false, id: piece.id };
-            }
-            
-            if (!skipRender) state.renderAll();
-            
-            // Capture history AFTER successful move (not during shuffle or dry-run)
-            if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
-              state.captureHistorySnapshot();
-            }
-            
-            if (state.gameMode === 'challenge' && !state.isShuffling) {
-              state.incrementMoveCount();
-              if (state.checkWinCondition()) {
-                state.handleWin();
-              }
-            }
-            return true;
-          }
-        }
-      }
-    }
+    return handleLargeGapMovement(state, selectedGap, dir, skipRender, dryRun);
   }
 
-  // Regular piece movement (small or big)
+  // CASE 3: Regular piece movement
   const movingPiece = state.pieceById.get(sourceCell.id);
   if (!movingPiece) return false;
 
-  if (!movingPiece.isLarge) {
-    // Small piece movement
-    // Check if this is part of 2 aligned small pieces moving into a large gap
-    if (selectedGap.isLarge) {
-      // Calculate direction vector
-      let dx = 0, dy = 0;
-      if (dir === 'up') { dy = -1; }
-      if (dir === 'down') { dy = 1; }
-      if (dir === 'left') { dx = -1; }
-      if (dir === 'right') { dx = 1; }
-      
-      // Find the other small piece that should move with this one
-      let otherPiecePos = null;
-      if (dx !== 0) {
-        // Horizontal movement: look for piece in same column, adjacent row
-        // Check both above and below
-        const above = normalizeCoords(state, fromX, fromY - 1);
-        const below = normalizeCoords(state, fromX, fromY + 1);
-        const aboveCell = state.grid[above.y]?.[above.x];
-        const belowCell = state.grid[below.y]?.[below.x];
-        
-        if (aboveCell && !aboveCell.isGap && !aboveCell.isLarge) {
-          otherPiecePos = above;
-        } else if (belowCell && !belowCell.isGap && !belowCell.isLarge) {
-          otherPiecePos = below;
-        }
-      } else if (dy !== 0) {
-        // Vertical movement: look for piece in same row, adjacent column
-        // Check both left and right
-        const left = normalizeCoords(state, fromX - 1, fromY);
-        const right = normalizeCoords(state, fromX + 1, fromY);
-        const leftCell = state.grid[left.y]?.[left.x];
-        const rightCell = state.grid[right.y]?.[right.x];
-        
-        if (leftCell && !leftCell.isGap && !leftCell.isLarge) {
-          otherPiecePos = left;
-        } else if (rightCell && !rightCell.isGap && !rightCell.isLarge) {
-          otherPiecePos = right;
-        }
-      }
-      
-      // If we found an aligned piece, check if both can move into the large gap
-      if (otherPiecePos) {
-        const otherPiece = state.pieceById.get(state.grid[otherPiecePos.y][otherPiecePos.x].id);
-        
-        // Check if both pieces would move into the large gap's cells
-        const piece1NewPos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
-        const piece2NewPos = normalizeCoords(state, otherPiece.x + dx, otherPiece.y + dy);
-        
-        // Get all 4 cells of the large gap
-        const gapCells = [
-          normalizeCoords(state, selectedGap.x, selectedGap.y),
-          normalizeCoords(state, selectedGap.x + 1, selectedGap.y),
-          normalizeCoords(state, selectedGap.x, selectedGap.y + 1),
-          normalizeCoords(state, selectedGap.x + 1, selectedGap.y + 1)
-        ];
-        
-        // Check if both new positions are within the large gap
-        const piece1InGap = gapCells.some(c => c.x === piece1NewPos.x && c.y === piece1NewPos.y);
-        const piece2InGap = gapCells.some(c => c.x === piece2NewPos.x && c.y === piece2NewPos.y);
-        
-        if (piece1InGap && piece2InGap) {
-          // Both pieces move into the large gap
-          // The 2 cells they DON'T occupy become the new gap position
-          const freedCells = gapCells.filter(c =>
-            !(c.x === piece1NewPos.x && c.y === piece1NewPos.y) &&
-            !(c.x === piece2NewPos.x && c.y === piece2NewPos.y)
-          );
-          
-          if (freedCells.length === 2) {
-            // Valid move - return early if dry run
-            if (dryRun) return true;
-            
-            // Move both pieces
-            movingPiece.x = piece1NewPos.x;
-            movingPiece.y = piece1NewPos.y;
-            otherPiece.x = piece2NewPos.x;
-            otherPiece.y = piece2NewPos.y;
-            
-            // Move large gap to where the pieces came from
-            // The freed cells are the 2 cells within the gap that pieces didn't move into
-            // We need to find the 2x2 block that includes these freed cells
-            // The gap moves in the OPPOSITE direction from the pieces
-            if (dx !== 0) {
-              // Horizontal movement: freed cells share same x, differ in y
-              // Gap's x position is determined by which cells were freed
-              selectedGap.x = freedCells[0].x;
-              selectedGap.y = Math.min(freedCells[0].y, freedCells[1].y);
-            } else {
-              // Vertical movement: freed cells share same y, differ in x
-              // Gap's y position is determined by which cells were freed
-              selectedGap.x = Math.min(freedCells[0].x, freedCells[1].x);
-              selectedGap.y = freedCells[0].y;
-            }
-            
-            // Update grid: clear old positions
-            state.grid[fromY][fromX] = null;
-            state.grid[otherPiecePos.y][otherPiecePos.x] = null;
-            
-            // Clear old large gap position (4 cells)
-            for (const cell of gapCells) {
-              state.grid[cell.y][cell.x] = null;
-            }
-            
-            // Set new piece positions
-            state.grid[movingPiece.y][movingPiece.x] = { isGap: false, isLarge: false, id: movingPiece.id };
-            state.grid[otherPiece.y][otherPiece.x] = { isGap: false, isLarge: false, id: otherPiece.id };
-            
-            // Set new large gap position (4 cells)
-            for (let gy = 0; gy < 2; gy++) {
-              for (let gx = 0; gx < 2; gx++) {
-                const newCell = normalizeCoords(state, selectedGap.x + gx, selectedGap.y + gy);
-                state.grid[newCell.y][newCell.x] = {
-                  isGap: true,
-                  isLarge: true,
-                  id: selectedGap.id,
-                  ox: gx,
-                  oy: gy
-                };
-              }
-            }
-            
-            if (!skipRender) state.renderAll();
-            
-            // Capture history AFTER successful move (not during shuffle or dry-run)
-            if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
-              state.captureHistorySnapshot();
-            }
-            
-            if (state.gameMode === 'challenge' && !state.isShuffling) {
-              state.incrementMoveCount();
-              if (state.checkWinCondition()) {
-                state.handleWin();
-              }
-            }
-            return true;
-          }
-        }
-      }
-      
-      // If we couldn't find a valid 2-piece move into large gap, reject the move
-      return false;
-    }
-    
-    // Valid move - return early if dry run
+  // CASE 3a: Small piece into large gap (requires 2 aligned pieces)
+  if (!movingPiece.isLarge && selectedGap.isLarge) {
+    return handleSmallPiecesIntoLargeGap(state, selectedGap, movingPiece, fromX, fromY, dir, skipRender, dryRun);
+  }
+  
+  // CASE 3b: Small piece into small gap (simple swap)
+  if (!movingPiece.isLarge && !selectedGap.isLarge) {
     if (dryRun) return true;
     
-    // Move small piece into the selected small gap (with wrapping)
     const newPos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
     movingPiece.x = newPos.x;
     movingPiece.y = newPos.y;
-
-    // Move selected gap to the freed cell
     selectedGap.x = fromX;
     selectedGap.y = fromY;
 
-    // Incremental grid update for small gap: just swap the two cells
     state.grid[movingPiece.y][movingPiece.x] = { isGap: false, isLarge: false, id: movingPiece.id };
     state.grid[selectedGap.y][selectedGap.x] = { isGap: true, isLarge: false, id: selectedGap.id };
     
-    if (!skipRender) state.renderAll();
-    
-    // Capture history AFTER successful move (not during shuffle or dry-run)
-    if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
-      state.captureHistorySnapshot();
-    }
-    
-    if (state.gameMode === 'challenge' && !state.isShuffling) {
-      state.incrementMoveCount();
-      if (state.checkWinCondition()) {
-        state.handleWin();
-      }
-    }
+    finalizeMove(state, skipRender, dryRun);
     return true;
   }
 
+  // CASE 3c: Large piece movement
   if (movingPiece.isLarge) {
-    // Use helper function to calculate destination and freed cells
     const result = calculateLargePieceDestination(state, movingPiece, dx, dy);
     if (!result) return false;
     
@@ -647,92 +617,33 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
     // Check if destination is a large gap (swap case)
     const destCell = state.grid[dest[0].y]?.[dest[0].x];
     if (destCell?.isGap && destCell?.isLarge && selectedGap.isLarge) {
-      // Large piece swapping with large gap
       const largeGap = state.pieceById.get(destCell.id);
       
-      // Verify all 4 cells of destination belong to the same large gap
       const allSameGap = dest.every(d => {
         const cell = state.grid[d.y]?.[d.x];
         return cell?.isGap && cell?.isLarge && cell.id === largeGap.id;
       });
       
       if (allSameGap) {
-        // Valid move - return early if dry run
-        if (dryRun) return true;
-        
-        // Swap positions
-        [movingPiece.x, movingPiece.y, largeGap.x, largeGap.y] =
-          [largeGap.x, largeGap.y, movingPiece.x, movingPiece.y];
-        
-        // Update grid: clear old positions and set new positions
-        // Clear old piece position
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dx = 0; dx < 2; dx++) {
-            const oldPiecePos = normalizeCoords(state, largeGap.x + dx, largeGap.y + dy);
-            state.grid[oldPiecePos.y][oldPiecePos.x] = null;
-          }
-        }
-        // Clear old gap position
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dx = 0; dx < 2; dx++) {
-            const oldGapPos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
-            state.grid[oldGapPos.y][oldGapPos.x] = null;
-          }
-        }
-        // Set new piece position
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dx = 0; dx < 2; dx++) {
-            const newPiecePos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
-            state.grid[newPiecePos.y][newPiecePos.x] = { isGap: false, isLarge: true, id: movingPiece.id, ox: dx, oy: dy };
-          }
-        }
-        // Set new gap position
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dx = 0; dx < 2; dx++) {
-            const newGapPos = normalizeCoords(state, largeGap.x + dx, largeGap.y + dy);
-            state.grid[newGapPos.y][newGapPos.x] = { isGap: true, isLarge: true, id: largeGap.id, ox: dx, oy: dy };
-          }
-        }
-        
-        if (!skipRender) state.renderAll();
-        
-        // Capture history AFTER successful move (not during shuffle or dry-run)
-        if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
-          state.captureHistorySnapshot();
-        }
-        
-        if (state.gameMode === 'challenge' && !state.isShuffling) {
-          state.incrementMoveCount();
-          if (state.checkWinCondition()) {
-            state.handleWin();
-          }
-        }
-        return true;
+        return executeSwap(state, movingPiece, largeGap, skipRender, dryRun);
       }
     }
-    // Large PIECE moving into 2 small gaps (not large gap movement)
-    // Both dest must be small gaps, and the selected gap must be one of them
+    
+    // Large piece moving into 2 small gaps
     const destAreSmallGaps = dest.every(d => {
       const cell = state.grid[d.y]?.[d.x];
       return cell?.isGap && !cell?.isLarge;
     });
     
-    // For small gaps moving into large piece: check if selected gap is one of the destination cells
-    // For large gaps: this is handled by the swap case above, so we skip this section
-    if (selectedGap.isLarge) {
-      // Large gap cannot move into large piece via this path (handled by swap above)
-      return false;
-    }
+    if (selectedGap.isLarge) return false;
     
     const selectedIsDest = dest.some(d => d.x === selectedGap.x && d.y === selectedGap.y);
     if (!(destAreSmallGaps && selectedIsDest)) return false;
 
-    // Find which gaps are at destination cells
     const gapAt = (c) => gapPieces.find(g => g.x === c.x && g.y === c.y);
     
     const map = [];
     if (dx !== 0) {
-      // Align by y
       for (const d of dest) {
         const gap = gapAt(d);
         if (!gap) return false;
@@ -741,7 +652,6 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
         map.push({ gap, target });
       }
     } else {
-      // dy !== 0, align by x
       for (const d of dest) {
         const gap = gapAt(d);
         if (!gap) return false;
@@ -751,61 +661,27 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
       }
     }
     
-    // Valid move - return early if dry run
     if (dryRun) return true;
     
-    // Move the piece (with wrapping)
     const oldPieceX = movingPiece.x;
     const oldPieceY = movingPiece.y;
     const newPos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
     movingPiece.x = newPos.x;
     movingPiece.y = newPos.y;
 
-    // Move each gap to its mapped freed cell
     for (const {gap, target} of map) {
       gap.x = target.x;
       gap.y = target.y;
     }
 
-    // Incremental grid update for big piece move
-    // Clear old 2×2 area (with wrapping)
-    for (let dy = 0; dy < 2; dy++) {
-      for (let dx = 0; dx < 2; dx++) {
-        const oldCellPos = normalizeCoords(state, oldPieceX + dx, oldPieceY + dy);
-        state.grid[oldCellPos.y][oldCellPos.x] = null;
-      }
-    }
-    // Set new 2×2 area (with wrapping)
-    for (let dy = 0; dy < 2; dy++) {
-      for (let dx = 0; dx < 2; dx++) {
-        const newCellPos = normalizeCoords(state, movingPiece.x + dx, movingPiece.y + dy);
-        state.grid[newCellPos.y][newCellPos.x] = {
-          isGap: false,
-          isLarge: true,
-          id: movingPiece.id,
-          ox: dx,
-          oy: dy
-        };
-      }
-    }
-    // Update gap positions in grid (gaps are already at correct wrapped positions)
+    clearGridCells(state, getLargePieceCells(state, { x: oldPieceX, y: oldPieceY, id: movingPiece.id }));
+    setLargePieceGrid(state, movingPiece, false);
+    
     for (const {gap} of map) {
       state.grid[gap.y][gap.x] = { isGap: true, isLarge: false, id: gap.id };
     }
     
-    if (!skipRender) state.renderAll();
-    
-    // Capture history AFTER successful move (not during shuffle or dry-run)
-    if (!dryRun && !state.isShuffling && state.captureHistorySnapshot) {
-      state.captureHistorySnapshot();
-    }
-    
-    if (state.gameMode === 'challenge' && !state.isShuffling) {
-      state.incrementMoveCount();
-      if (state.checkWinCondition()) {
-        state.handleWin();
-      }
-    }
+    finalizeMove(state, skipRender, dryRun);
     return true;
   }
 
