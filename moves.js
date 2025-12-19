@@ -172,6 +172,48 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
     
     // Check if both gaps are the same size (both small or both large)
     if (selectedGap.isLarge === otherGap.isLarge) {
+      // For large gaps, verify proper alignment by checking if the source cell
+      // is actually part of the other gap (not just adjacent to one cell)
+      if (selectedGap.isLarge) {
+        // Calculate which cells we're looking at for the other gap
+        let checkCells = [];
+        if (dir === 'left' || dir === 'right') {
+          // Horizontal: check for 2 vertically aligned cells
+          if (dir === 'right') {
+            // dir='right' means look LEFT (at x-1)
+            const cell1 = normalizeCoords(state, selectedGap.x - 1, selectedGap.y);
+            const cell2 = normalizeCoords(state, selectedGap.x - 1, selectedGap.y + 1);
+            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+          } else {
+            // dir='left' means look RIGHT (at x+2)
+            const cell1 = normalizeCoords(state, selectedGap.x + 2, selectedGap.y);
+            const cell2 = normalizeCoords(state, selectedGap.x + 2, selectedGap.y + 1);
+            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+          }
+        } else if (dir === 'up' || dir === 'down') {
+          // Vertical: check for 2 horizontally aligned cells
+          if (dir === 'down') {
+            // dir='down' means look ABOVE (at y-1)
+            const cell1 = normalizeCoords(state, selectedGap.x, selectedGap.y - 1);
+            const cell2 = normalizeCoords(state, selectedGap.x + 1, selectedGap.y - 1);
+            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+          } else {
+            // dir='up' means look BELOW (at y+2)
+            const cell1 = normalizeCoords(state, selectedGap.x, selectedGap.y + 2);
+            const cell2 = normalizeCoords(state, selectedGap.x + 1, selectedGap.y + 2);
+            checkCells = [{x: cell1.x, y: cell1.y}, {x: cell2.x, y: cell2.y}];
+          }
+        }
+        
+        // Verify all checked cells belong to the same large gap
+        const allSameGap = checkCells.every(c => {
+          const cell = state.grid[c.y]?.[c.x];
+          return cell?.isGap && cell?.isLarge && cell.id === otherGap.id;
+        });
+        
+        if (!allSameGap) return false;
+      }
+      
       // Valid move - return early if dry run
       if (dryRun) return true;
       

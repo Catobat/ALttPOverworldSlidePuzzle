@@ -71,6 +71,12 @@ const defaultBoard = {
       ]
     },
     {
+      name: "2 large gaps (bottom left)",
+      gaps: [
+        {x: 0, y: 6}, {x: 0, y: 3}
+      ]
+    },
+    {
       name: "1 large gap (bottom left)",
       gaps: [
         {x: 0, y: 6}  // This position matches a large piece, so it becomes a large gap
@@ -108,6 +114,12 @@ const horizontalBoard = {
       name: "1 small gap (bottom right)",
       gaps: [
         {x: 15, y: 7}
+      ]
+    },
+    {
+      name: "2 large gaps (bottom left)",
+      gaps: [
+        {x: 0, y: 6}, {x: 0, y: 3}
       ]
     },
     {
@@ -151,6 +163,12 @@ const verticalBoard = {
       ]
     },
     {
+      name: "2 large gaps (bottom left)",
+      gaps: [
+        {x: 0, y: 6}, {x: 0, y: 3}
+      ]
+    },
+    {
       name: "1 large gap (bottom left)",
       gaps: [
         {x: 0, y: 14}  // This position matches a large piece, so it becomes a large gap
@@ -183,6 +201,12 @@ const extraLargePieceBoard = {
       name: "1 small gap (bottom right)",
       gaps: [
         {x: 7, y: 7}
+      ]
+    },
+    {
+      name: "2 large gaps (bottom left)",
+      gaps: [
+        {x: 0, y: 6}, {x: 0, y: 3}
       ]
     },
     {
