@@ -47,7 +47,7 @@ class SeededRandom {
  * @param {Function} randomInt - Random integer function (for seeded or unseeded randomness)
  */
 export function performGapRandomization(state, randomInt) {
-  const gapConfig = state.boardConfig.gapConfigurations[state.selectedGapConfigIndex];
+  const gapConfig = state.boardConfig.gapConfigurations[state.selectedGapConfigKey];
   
   // Count small and large gaps in configuration
   let numSmallGaps = 0;
@@ -286,9 +286,11 @@ export async function shuffle(state, steps, seed = null, randomizeGaps = false) 
   // Combine seed, steps, and board to create a unique seed for this shuffle
   // This ensures that changing any parameter produces a different shuffle
   // Using XOR with bit shifting to avoid overflow and ensure good bit mixing
-  // Board hash: default=0, horizontal=1, vertical=2 (shifted left by 24 bits)
-  const boardHash = state.currentBoardSlug === 'horizontal' ? 1 : state.currentBoardSlug === 'vertical' ? 2 : state.currentBoardSlug === 'classic' ? 3 : state.currentBoardSlug === 'ninelargepieces' ? 4 : state.currentBoardSlug === 'singlelargepiece' ? 5 : 0;
-  const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24) ^ (state.selectedGapConfigIndex << 8) ^ (randomizeGaps << 12) ^ (state.wrapHorizontal << 13) ^ (state.wrapVertical << 14)) >>> 0) : null;
+  // Hash the board slug string to a number for seed mixing
+  const boardHash = state.currentBoardSlug.split('').reduce((hash, char) => ((hash << 5) - hash) + char.charCodeAt(0), 0);
+  // Hash the gap config key string to a number for seed mixing
+  const gapConfigHash = state.selectedGapConfigKey.split('').reduce((hash, char) => ((hash << 5) - hash) + char.charCodeAt(0), 0);
+  const combinedSeed = seed !== null ? ((seed ^ (steps << 16) ^ (boardHash << 24) ^ (gapConfigHash << 8) ^ (randomizeGaps << 12) ^ (state.wrapHorizontal << 13) ^ (state.wrapVertical << 14)) >>> 0) : null;
   const rng = combinedSeed !== null ? new SeededRandom(combinedSeed) : null;
   const random = () => rng ? rng.next() : Math.random();
   const randomInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max);
@@ -296,6 +298,9 @@ export async function shuffle(state, steps, seed = null, randomizeGaps = false) 
   // If randomizeGaps is enabled, use the shared gap randomization function
   if (randomizeGaps) {
     performGapRandomization(state, randomInt);
+    // CRITICAL: Update DOM to convert tiles to gaps and vice versa
+    // This must happen before buildGridFromState() and renderAll()
+    state.updatePieceDOMForGapChanges();
     // CRITICAL: Rebuild grid after gap randomization
     state.buildGridFromState();
   }

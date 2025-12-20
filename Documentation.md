@@ -36,12 +36,17 @@ const boardConfig = {
     secondary: 'darkworld.png'  // For horizontal/vertical modes
   },
   largePieces: [{x, y}, ...],   // Large piece top-left corners
-  gapConfigurations: [           // Available gap configurations
-    {
+  defaultGapConfig: '2s',        // Default gap configuration key
+  gapConfigurations: {           // Available gap configurations (key -> config)
+    '2s': {
       name: "2 small gaps (bottom right)",
       gaps: [{x: 7, y: 6}, {x: 7, y: 7}]
+    },
+    '1s': {
+      name: "1 small gap (bottom right)",
+      gaps: [{x: 7, y: 7}]
     }
-  ]
+  }
 };
 ```
 
@@ -55,8 +60,10 @@ const boardConfig = {
 Each board can have multiple gap placement options for variety.
 
 **Gap Configuration Structure**:
-- Each board has a `gapConfigurations` array with one or more gap placement options
+- Each board has a `gapConfigurations` object mapping string keys to gap configurations
+- Each board has a `defaultGapConfig` property specifying the default configuration key
 - Each configuration has `name` (descriptive) and `gaps` (array of `{x, y}` positions)
+- Configuration keys are short strings (e.g., '2s' for 2 small gaps, '1l' for 1 large gap)
 
 **Gap Size Determination**:
 - Gap size determined automatically based on position
@@ -162,7 +169,7 @@ Challenge URLs include:
 - `seed`: Challenge seed (numeric)
 - `steps`: Number of shuffle steps
 - `board`: Board slug
-- `gapConfig`: Gap configuration index
+- `gapConfig`: Gap configuration key (e.g., '2s', '1l')
 - `randomizeGaps`: Whether gaps were randomized
 - `wrapH`, `wrapV`: Wrapping enabled flags
 
@@ -336,14 +343,15 @@ boardConfig          // Object defining board layout
   .width             // Board width in tiles
   .height            // Board height in tiles
   .largePieces[]     // Array of large piece top-left corners
-  .gapConfigurations[] // Array of gap configuration options
+  .defaultGapConfig  // Default gap configuration key
+  .gapConfigurations{} // Object mapping keys to gap configuration options
 ```
 
 #### State Variables
 ```javascript
 boardConfig          // Currently active board configuration
 currentBoardSlug     // Current board slug
-selectedGapConfigIndex // Index into gapConfigurations
+selectedGapConfigKey // Key into gapConfigurations (e.g., '2s', '1l')
 grid                 // 2D array: {isGap, isLarge, id, ox, oy} or null
 pieces[]             // Unified array: {id, isGap, isLarge, x, y, homeX, homeY, el, innerEl, selected}
 pieceById            // Map for quick piece lookup by ID
