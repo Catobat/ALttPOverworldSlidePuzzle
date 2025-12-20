@@ -494,6 +494,317 @@ function handleSmallPiecesIntoLargeGap(state, largeGap, movingPiece, fromX, from
 }
 
 /**
+ * Check if gaps are adjacent and form a valid chain
+ * @param {Object} state - Game state object
+ * @param {Array} gaps - Array of gap objects
+ * @param {number} dx - Direction X
+ * @param {number} dy - Direction Y
+ * @returns {boolean} True if gaps are properly adjacent
+ */
+function areGapsAdjacent(state, gaps, dx, dy) {
+  if (gaps.length < 2) return true;
+  
+  // For 2 gaps, they just need to be aligned in the perpendicular direction
+  // and their positions should differ by 2 in the parallel direction
+  // (accounting for wrapping - they could be on opposite sides of the board)
+  if (gaps.length === 2) {
+    const gap1 = gaps[0];
+    const gap2 = gaps[1];
+    
+    if (dx !== 0) {
+      // Horizontal movement: gaps must be vertically adjacent
+      // They must have the same x coordinate
+      if (gap1.x !== gap2.x) {
+        return false;
+      }
+      // They must be 2 apart in y (accounting for wrapping)
+      const yDiff = Math.abs(gap1.y - gap2.y);
+      const boardHeight = state.boardConfig.height;
+      // Check both normal distance and wrapped distance
+      const isAdjacent = (yDiff === 2) || (yDiff === boardHeight - 2);
+      if (!isAdjacent) {
+        return false;
+      }
+    } else if (dy !== 0) {
+      // Vertical movement: gaps must be horizontally adjacent
+      // They must have the same y coordinate
+      if (gap1.y !== gap2.y) {
+        return false;
+      }
+      // They must be 2 apart in x (accounting for wrapping)
+      const xDiff = Math.abs(gap1.x - gap2.x);
+      const boardWidth = state.boardConfig.width;
+      // Check both normal distance and wrapped distance
+      const isAdjacent = (xDiff === 2) || (xDiff === boardWidth - 2);
+      if (!isAdjacent) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  // For 3+ gaps, use the original logic
+  // Gaps must be adjacent in the direction perpendicular to movement
+  if (dx !== 0) {
+    // Horizontal movement: gaps must be vertically adjacent
+    const sortedGaps = [...gaps].sort((a, b) => a.y - b.y);
+    for (let i = 1; i < sortedGaps.length; i++) {
+      if (sortedGaps[i].y !== sortedGaps[i-1].y + 2) {
+        return false; // Gap in the chain
+      }
+      if (sortedGaps[i].x !== sortedGaps[i-1].x) {
+        return false; // Not aligned
+      }
+    }
+  } else if (dy !== 0) {
+    // Vertical movement: gaps must be horizontally adjacent
+    const sortedGaps = [...gaps].sort((a, b) => a.x - b.x);
+    for (let i = 1; i < sortedGaps.length; i++) {
+      if (sortedGaps[i].x !== sortedGaps[i-1].x + 2) {
+        return false; // Gap in the chain
+      }
+      if (sortedGaps[i].y !== sortedGaps[i-1].y) {
+        return false; // Not aligned
+      }
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Find small pieces to fill target cells
+ * @param {Object} state - Game state object
+ * @param {Object} largePiece - Large piece object
+ * @param {Array} targetCells - Array of {x, y} target cells
+ * @param {number} dx - Direction X
+ * @param {number} dy - Direction Y
+ * @returns {Array|null} Array of small pieces or null if invalid
+ */
+function findSmallPiecesToFill(state, largePiece, targetCells, dx, dy) {
+  // Small pieces should be adjacent to large piece in opposite direction
+  const oppositeDx = -dx;
+  const oppositeDy = -dy;
+  
+  const smallPieces = [];
+  
+  // For each target cell, find a small piece that can fill it
+  for (const targetCell of targetCells) {
+    // Calculate where the piece should currently be
+    const sourcePos = normalizeCoords(
+      state,
+      targetCell.x + oppositeDx,
+      targetCell.y + oppositeDy
+    );
+    
+    const sourceCell = state.grid[sourcePos.y]?.[sourcePos.x];
+    if (!sourceCell || sourceCell.isGap || sourceCell.isLarge) {
+      return null; // Invalid configuration
+    }
+    
+    const piece = state.pieceById.get(sourceCell.id);
+    if (!piece) {
+      return null;
+    }
+    
+    smallPieces.push(piece);
+  }
+  
+  return smallPieces;
+}
+
+/**
+ * Detect if a large piece's movement would overlap with multiple large gaps
+ * @param {Object} state - Game state object
+ * @param {Object} largePiece - Large piece object
+ * @param {number} dx - Direction X
+ * @param {number} dy - Direction Y
+ * @param {Array} destCells - Destination cells for the large piece
+ * @returns {Object|null} Chain information or null
+ */
+function detectLargeGapChain(state, largePiece, dx, dy, destCells) {
+  // Get cells at destination
+  const destCell1 = state.grid[destCells[0].y]?.[destCells[0].x];
+  const destCell2 = state.grid[destCells[1].y]?.[destCells[1].x];
+  
+  // Both destination cells must be large gaps
+  if (!destCell1?.isGap || !destCell1?.isLarge || !destCell2?.isGap || !destCell2?.isLarge) {
+    return null; // Not both large gaps
+  }
+  
+  // Check if they belong to different gaps
+  if (destCell1.id === destCell2.id) {
+    return null; // Same gap, not a chain (handled by existing swap logic)
+  }
+  
+  // Collect all large gap IDs that overlap with destination
+  const gapIds = new Set();
+  for (const cell of destCells) {
+    const gridCell = state.grid[cell.y]?.[cell.x];
+    if (gridCell?.isGap && gridCell?.isLarge) {
+      gapIds.add(gridCell.id);
+    }
+  }
+  
+  // Must have at least 2 gaps for a chain
+  if (gapIds.size < 2) {
+    return null;
+  }
+  
+  // Get gap objects
+  const gaps = Array.from(gapIds).map(id => state.pieceById.get(id));
+  
+  // Verify gaps are adjacent and form a valid chain
+  if (!areGapsAdjacent(state, gaps, dx, dy)) {
+    return null;
+  }
+  
+  return {
+    gaps,
+    isChain: true,
+    gapCount: gaps.length
+  };
+}
+
+/**
+ * Validate that all gaps in the chain can move together
+ * @param {Object} state - Game state object
+ * @param {Object} chainInfo - Chain information
+ * @param {Object} largePiece - Large piece object
+ * @param {number} dx - Direction X
+ * @param {number} dy - Direction Y
+ * @returns {Object|null} Move plan or null if invalid
+ */
+function validateChainMove(state, chainInfo, largePiece, dx, dy) {
+  const { gaps } = chainInfo;
+  const movePlan = {
+    gaps: [],
+    largePiece: null,
+    smallPieces: []
+  };
+  
+  // The large piece moves by 2 cells (its width/height) in the direction
+  // The gaps move by 2 cells in the OPPOSITE direction
+  const pieceDx = dx * 2;
+  const pieceDy = dy * 2;
+  const gapDx = -pieceDx;
+  const gapDy = -pieceDy;
+  
+  // Calculate new positions for all gaps
+  for (const gap of gaps) {
+    const newPos = normalizeCoords(state, gap.x + gapDx, gap.y + gapDy);
+    
+    // Check bounds
+    if (!isValidCoord(state, newPos.x, newPos.y)) {
+      return null;
+    }
+    
+    movePlan.gaps.push({ gap, newX: newPos.x, newY: newPos.y });
+  }
+  
+  // Calculate new position for large piece
+  const pieceNewPos = normalizeCoords(state, largePiece.x + pieceDx, largePiece.y + pieceDy);
+  movePlan.largePiece = { piece: largePiece, newX: pieceNewPos.x, newY: pieceNewPos.y };
+  
+  // Identify cells that will be freed by gaps moving
+  const freedCells = [];
+  for (const gap of gaps) {
+    const gapCells = getLargePieceCells(state, gap);
+    for (const cell of gapCells) {
+      // Check if this cell won't be occupied by another gap after move
+      const willBeOccupied = movePlan.gaps.some(g => {
+        const occupiedCells = getLargePieceCells(state, { x: g.newX, y: g.newY });
+        return occupiedCells.some(oc => oc.x === cell.x && oc.y === cell.y);
+      });
+      if (!willBeOccupied) {
+        freedCells.push(cell);
+      }
+    }
+  }
+  
+  // Calculate which cells will be occupied by large piece
+  const pieceCells = getLargePieceCells(state, { x: pieceNewPos.x, y: pieceNewPos.y });
+  
+  // Remaining freed cells must be filled by small pieces
+  const remainingCells = freedCells.filter(fc =>
+    !pieceCells.some(pc => pc.x === fc.x && pc.y === fc.y)
+  );
+  
+  // Find small pieces to fill remaining cells
+  // They must be adjacent to the large piece in the opposite direction
+  const smallPieces = findSmallPiecesToFill(state, largePiece, remainingCells, pieceDx, pieceDy);
+  if (!smallPieces || smallPieces.length !== remainingCells.length) {
+    return null;
+  }
+  
+  movePlan.smallPieces = smallPieces.map((piece, i) => ({
+    piece,
+    newX: remainingCells[i].x,
+    newY: remainingCells[i].y
+  }));
+  
+  return movePlan;
+}
+
+/**
+ * Execute the coordinated chain move atomically
+ * @param {Object} state - Game state object
+ * @param {Object} movePlan - Move plan with all entity movements
+ * @param {boolean} skipRender - Whether to skip rendering
+ * @param {boolean} dryRun - Whether this is a dry run
+ * @returns {boolean} True if successful
+ */
+function executeChainMove(state, movePlan, skipRender, dryRun) {
+  if (dryRun) return true;
+  
+  // Store old positions for clearing grid
+  const oldGapPositions = movePlan.gaps.map(g => ({ x: g.gap.x, y: g.gap.y, gap: g.gap }));
+  const oldPiecePos = { x: movePlan.largePiece.piece.x, y: movePlan.largePiece.piece.y };
+  const oldSmallPiecePositions = movePlan.smallPieces.map(sp => ({ x: sp.piece.x, y: sp.piece.y }));
+  
+  // Update positions for all entities
+  // Move all gaps in chain
+  for (const { gap, newX, newY } of movePlan.gaps) {
+    gap.x = newX;
+    gap.y = newY;
+  }
+  
+  // Move large piece
+  movePlan.largePiece.piece.x = movePlan.largePiece.newX;
+  movePlan.largePiece.piece.y = movePlan.largePiece.newY;
+  
+  // Move small pieces
+  for (const { piece, newX, newY } of movePlan.smallPieces) {
+    piece.x = newX;
+    piece.y = newY;
+  }
+  
+  // Update grid state
+  // Clear old positions
+  for (const { x, y, gap } of oldGapPositions) {
+    clearGridCells(state, getLargePieceCells(state, { x, y, id: gap.id }));
+  }
+  clearGridCells(state, getLargePieceCells(state, { x: oldPiecePos.x, y: oldPiecePos.y, id: movePlan.largePiece.piece.id }));
+  for (let i = 0; i < oldSmallPiecePositions.length; i++) {
+    const { x, y } = oldSmallPiecePositions[i];
+    state.grid[y][x] = null;
+  }
+  
+  // Set new positions for all entities
+  for (const { gap } of movePlan.gaps) {
+    setLargePieceGrid(state, gap, true);
+  }
+  setLargePieceGrid(state, movePlan.largePiece.piece, false);
+  for (const { piece } of movePlan.smallPieces) {
+    state.grid[piece.y][piece.x] = { isGap: false, isLarge: false, id: piece.id };
+  }
+  
+  finalizeMove(state, skipRender, dryRun);
+  return true;
+}
+
+/**
  * Main movement function - attempts to move a piece into a gap
  * @param {Object} state - Game state object
  * @param {string} dir - Direction ('up'|'down'|'left'|'right')
@@ -578,6 +889,40 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
 
   // CASE 2: Large gap moving into 2 small pieces/gaps
   if (selectedGap.isLarge) {
+    // Check if this is a chain move scenario
+    // For large gaps, we need to check BOTH cells that would be involved
+    const checkCells = calculateCheckCells(state, selectedGap, dir);
+    
+    // Check if any of the check cells contains a large piece
+    let largePieceId = null;
+    for (const cell of checkCells) {
+      const gridCell = state.grid[cell.y]?.[cell.x];
+      if (gridCell && !gridCell.isGap && gridCell.isLarge) {
+        largePieceId = gridCell.id;
+        break;
+      }
+    }
+    
+    if (largePieceId) {
+      const movingPiece = state.pieceById.get(largePieceId);
+      if (movingPiece) {
+        // Calculate where the large piece would move
+        const result = calculateLargePieceDestination(state, movingPiece, dx, dy);
+        if (result) {
+          const { destCells: dest } = result;
+          
+          // Check for multi-gap chain
+          const chainInfo = detectLargeGapChain(state, movingPiece, dx, dy, dest);
+          if (chainInfo && chainInfo.isChain) {
+            const movePlan = validateChainMove(state, chainInfo, movingPiece, dx, dy);
+            if (movePlan) {
+              return executeChainMove(state, movePlan, skipRender, dryRun);
+            }
+          }
+        }
+      }
+    }
+    
     return handleLargeGapMovement(state, selectedGap, dir, skipRender, dryRun);
   }
 
@@ -613,6 +958,15 @@ export function tryMove(state, dir, gap, cachedGapPieces = null, dryRun = false)
     if (!result) return false;
     
     const { destCells: dest, freedCells: freed } = result;
+
+    // Check for multi-gap chain
+    const chainInfo = detectLargeGapChain(state, movingPiece, dx, dy, dest);
+    if (chainInfo && chainInfo.isChain) {
+      const movePlan = validateChainMove(state, chainInfo, movingPiece, dx, dy);
+      if (movePlan) {
+        return executeChainMove(state, movePlan, skipRender, dryRun);
+      }
+    }
 
     // Check if destination is a large gap (swap case)
     const destCell = state.grid[dest[0].y]?.[dest[0].x];

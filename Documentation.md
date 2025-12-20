@@ -104,6 +104,15 @@ Large gaps are 2×2 gaps that function similarly to large pieces but act as empt
 - Works similarly to large piece movement but in reverse
 - Destination cells must be properly aligned (same row or column)
 
+**Multi-Gap Chain Moves**:
+- When multiple large gaps are adjacent, they can move together as a coordinated chain
+- A large piece can move into a space overlapping multiple adjacent large gaps
+- All gaps in the chain move together in the same direction
+- Small pieces fill the remaining spaces left by the moving gaps
+- Example: 2 vertically adjacent large gaps can swap with 1 large piece + 4 small pieces
+- Chain detection validates gap adjacency and proper alignment
+- Enables more complex puzzle configurations and movements
+
 **Gap Swapping**:
 - Small gaps can swap with other small gaps
 - Large gaps can swap with other large gaps
