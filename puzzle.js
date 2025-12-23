@@ -74,7 +74,7 @@ const defaultBoard = {
     '2l': {
       name: "2 large gaps (bottom left)",
       gaps: [
-        {x: 0, y: 6}, {x: 0, y: 3}
+        {x: 0, y: 3}, {x: 0, y: 6}
       ]
     },
     '1l': {
@@ -121,7 +121,7 @@ const horizontalBoard = {
     '2l': {
       name: "2 large gaps (bottom left)",
       gaps: [
-        {x: 0, y: 6}, {x: 0, y: 3}
+        {x: 0, y: 3}, {x: 0, y: 6}
       ]
     },
     '1l': {
@@ -168,7 +168,7 @@ const verticalBoard = {
     '2l': {
       name: "2 large gaps (bottom left)",
       gaps: [
-        {x: 0, y: 6}, {x: 0, y: 3}
+        {x: 0, y: 3}, {x: 0, y: 6}
       ]
     },
     '1l': {
@@ -180,7 +180,7 @@ const verticalBoard = {
   }
 };
 
-const extraLargePieceBoard = {
+const nineLargePiecesBoard = {
   width: 8,           // Board width in tiles
   height: 8,          // Board height in tiles
   imageMode: 'single', // 'single', 'horizontal', or 'vertical'
@@ -210,7 +210,49 @@ const extraLargePieceBoard = {
     '2l': {
       name: "2 large gaps (bottom left)",
       gaps: [
-        {x: 0, y: 6}, {x: 0, y: 3}
+        {x: 0, y: 3}, {x: 0, y: 6}
+      ]
+    },
+    '1l': {
+      name: "1 large gap (bottom left)",
+      gaps: [
+        {x: 0, y: 6}  // This position matches a large piece, so it becomes a large gap
+      ]
+    }
+  }
+};
+
+const tenLargePiecesBoard = {
+  width: 8,           // Board width in tiles
+  height: 8,          // Board height in tiles
+  imageMode: 'single', // 'single', 'horizontal', or 'vertical'
+  images: {
+    primary: 'lightworld.png'  // Single image for entire board
+  },
+  largePieces: [      // Large piece top-left corners (array of {x, y})
+    {x: 0, y: 0}, {x: 3, y: 0}, {x: 5, y: 0},
+    {x: 0, y: 3}, {x: 3, y: 2}, {x: 3, y: 4}, {x: 6, y: 3},
+    {x: 0, y: 6}, {x: 3, y: 6}, {x: 5, y: 6}
+  ],
+  defaultGapConfig: '2s',  // Default gap configuration key
+  gapConfigurations: {    // Available gap configurations for this board (key -> config)
+    '2s': {
+      name: "2 small gaps (bottom right)",
+      gaps: [
+        {x: 7, y: 6},
+        {x: 7, y: 7}
+      ]
+    },
+    '1s': {
+      name: "1 small gap (bottom right)",
+      gaps: [
+        {x: 7, y: 7}
+      ]
+    },
+    '2l': {
+      name: "2 large gaps (bottom left)",
+      gaps: [
+        {x: 0, y: 3}, {x: 0, y: 6}
       ]
     },
     '1l': {
@@ -256,7 +298,33 @@ const singleLargePieceBoard = {
   }
 };
 
-const smallPiecesBoard = {
+const smallPiecesFourBoard = {
+  width: 4,           // Board width in tiles
+  height: 4,          // Board height in tiles
+  imageMode: 'single', // 'single', 'horizontal', or 'vertical'
+  images: {
+    primary: 'lightworld.png'  // Single image for entire board
+  },
+  largePieces: [],    // No large pieces - all tiles are 1×1
+  defaultGapConfig: '1s',  // Default gap configuration key
+  gapConfigurations: {    // Available gap configurations for this board (key -> config)
+    '1s': {
+      name: "1 small gap (bottom right)",
+      gaps: [
+        {x: 3, y: 3}  // Single small gap in bottom right corner
+      ]
+    },
+    '2s': {
+      name: "2 small gaps (bottom right)",
+      gaps: [
+        {x: 3, y: 2},
+        {x: 3, y: 3}
+      ]
+    }
+  }
+};
+
+const smallPiecesEightBoard = {
   width: 8,           // Board width in tiles
   height: 8,          // Board height in tiles
   imageMode: 'single', // 'single', 'horizontal', or 'vertical'
@@ -287,9 +355,11 @@ const boardRegistry = {
   'default': defaultBoard,
   'horizontal': horizontalBoard,
   'vertical': verticalBoard,
-  'ninelargepieces': extraLargePieceBoard,
+  'ninelargepieces': nineLargePiecesBoard,
+  'tenlargepieces': tenLargePiecesBoard,
   'singlelargepiece': singleLargePieceBoard,
-  'classic': smallPiecesBoard
+  'classicsmall': smallPiecesFourBoard,
+  'classic': smallPiecesEightBoard
 };
 
 // ============================================================================
@@ -1467,17 +1537,13 @@ function applyBoardSize() {
     // Use iterative approach to ensure board is properly sized
     // Repeat until board size stabilizes (max 20 iterations)
     let iteration = 0;
-    let lastBoardWidth = 0;
     
     const applyIteration = () => {
       // Apply scaling (includes auto-positioning logic)
       updateAutoFitScale();
       
       // Check if we should continue iterating
-      const newBoardWidth = boardEl.offsetWidth;
-      
       if (iteration < 20) {
-        lastBoardWidth = newBoardWidth;
         iteration++;
         // Schedule next iteration after DOM settles
         requestAnimationFrame(() => {

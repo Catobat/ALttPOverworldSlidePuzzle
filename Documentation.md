@@ -1,4 +1,4 @@
-# Slide Puzzle Game - AI Instructions
+# Slide Puzzle Game - Documentation
 
 ## Project Overview
 This is a browser-based slide puzzle game with a unique 8×8 grid with mixed-size pieces and multi-gap mechanics. The game supports both small (1×1) and large (2×2) pieces, as well as small (1×1) and large (2×2) gaps. The project is split into three files: HTML for structure, CSS for styling, and JavaScript for game logic.
@@ -22,8 +22,10 @@ The game supports multiple board configurations with different layouts and backg
 2. **Horizontal Board** - Slug: `'horizontal'` - 16×8 grid, two images side by side
 3. **Vertical Board** - Slug: `'vertical'` - 8×16 grid, two images stacked vertically
 4. **Nine Large Pieces Board** - Slug: `'ninelargepieces'` - 8×8 grid, single image mode
-5. **Single Large Piece Board** - Slug: `'singlelargepiece'` - 8×8 grid, single image mode
-6. **Classic Board** - Slug: `'classic'` - 8×8 grid, all 1×1 pieces
+5. **Ten Large Pieces Board** - Slug: `'tenlargepieces'` - 8×8 grid, single image mode
+6. **Single Large Piece Board** - Slug: `'singlelargepiece'` - 8×8 grid, single image mode
+7. **Small Classic Board** - Slug: `'classicsmall'` - 4×4 grid, all 1×1 pieces
+8. **Big Classic Board** - Slug: `'classic'` - 8×8 grid, all 1×1 pieces
 
 #### Board Configuration Structure
 ```javascript
